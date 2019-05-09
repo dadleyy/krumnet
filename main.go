@@ -3,27 +3,24 @@ package main
 import "os"
 import "fmt"
 import "flag"
-import "net/http"
-
-type options struct {
-	port string
-}
-
-type handler struct {
-}
-
-func (h handler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	response.WriteHeader(200)
-	fmt.Fprintf(response, "hello")
-}
+import "github.com/krumpled/api/server"
 
 func main() {
-	opts := options{}
-	flag.StringVar(&opts.port, "port", "1991", "http port")
-	fmt.Println("hello")
+	opts := server.Options{}
+	flag.StringVar(&opts.Addr, "address", ":1991", "http address")
 
-	if e := http.ListenAndServe(fmt.Sprintf("0.0.0.0:%s", opts.port), handler{}); e != nil {
+	handler, e := server.New(opts)
+
+	if e != nil {
 		fmt.Printf("unable to start http server: %s", e)
 		os.Exit(1)
 	}
+
+	fmt.Printf("start server, binding to %s\n", opts.Addr)
+	if e := handler.ListenAndServe(); e != nil {
+		fmt.Printf("unable to start http server: %s", e)
+		os.Exit(1)
+	}
+
+	handler.Close()
 }
