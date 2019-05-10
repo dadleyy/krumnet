@@ -5,34 +5,37 @@ import "fmt"
 import "net/url"
 import "net/http"
 import "encoding/json"
+import "github.com/krumpled/api/server/auth"
 
 const (
-	login    = "/auth/login"
-	logout   = "/auth/logout"
-	callback = "/auth/google/callback"
-	authUrl  = "https://accounts.google.com/o/oauth2/v2/auth"
-	tokenUrl = "https://www.googleapis.com/oauth2/v4/token"
+	login       = "/auth/login"
+	logout      = "/auth/logout"
+	callback    = "/auth/google/callback"
+	discoverURL = "https://openidconnect.googleapis.com/v1/userinfo"
+	authURL     = "https://accounts.google.com/o/oauth2/v2/auth"
+	tokenURL    = "https://www.googleapis.com/oauth2/v4/token"
 )
 
 type credentials struct {
 	Google struct {
-		ClientId     string
+		ClientID     string
 		ClientSecret string
-		RedirectUri  string
+		RedirectURI  string
 	}
 	Krumpled struct {
-		RedirectUri string
+		RedirectURI string
 	}
 }
 
 type authenticationRouter struct {
 	mux         *http.ServeMux
 	credentials credentials
+	store       auth.Store
 }
 
-func (auth *authenticationRouter) login(response http.ResponseWriter, request *http.Request) {
+func (a *authenticationRouter) login(response http.ResponseWriter, request *http.Request) {
 	header := response.Header()
-	destination, e := url.Parse(authUrl)
+	destination, e := url.Parse(authURL)
 
 	if e != nil {
 		log.Printf("unable to parse auth url: %s", e)
@@ -42,9 +45,9 @@ func (auth *authenticationRouter) login(response http.ResponseWriter, request *h
 
 	query := make(url.Values)
 	query.Set("response_type", "code")
-	query.Set("client_id", auth.credentials.Google.ClientId)
-	query.Set("scope", "email")
-	query.Set("redirect_uri", auth.credentials.Google.RedirectUri)
+	query.Set("client_id", a.credentials.Google.ClientID)
+	query.Set("scope", "email profile")
+	query.Set("redirect_uri", a.credentials.Google.RedirectURI)
 	destination.RawQuery = query.Encode()
 
 	header.Add("Location", destination.String())
@@ -52,12 +55,49 @@ func (auth *authenticationRouter) login(response http.ResponseWriter, request *h
 	response.WriteHeader(302)
 }
 
-func (auth *authenticationRouter) logout(response http.ResponseWriter, request *http.Request) {
+func (a *authenticationRouter) fetchUserInfo(token string) (auth.UserInfo, error) {
+	discover, e := http.NewRequest("GET", discoverURL, nil)
+
+	if e != nil {
+		return auth.UserInfo{}, e
+	}
+
+	discover.Header.Add("Authorization", fmt.Sprintf("Bearer %s", token))
+
+	client := http.Client{}
+	discovery, e := client.Do(discover)
+
+	if e != nil {
+		return auth.UserInfo{}, e
+	}
+
+	defer discovery.Body.Close()
+
+	info := struct {
+		ID      string `json:"sub"`
+		Name    string `json:"name"`
+		Picture string `json:"picture"`
+		Email   string `json:"email"`
+		Locale  string `json:"locale"`
+	}{}
+
+	decoder := json.NewDecoder(discovery.Body)
+
+	if e := decoder.Decode(&info); e != nil {
+		return auth.UserInfo{}, e
+	}
+
+	log.Printf("successfully pulled '%s' info the system", info.Name)
+
+	return auth.UserInfo{Email: info.Email, ID: info.ID, Name: info.Name}, nil
+}
+
+func (a *authenticationRouter) logout(response http.ResponseWriter, request *http.Request) {
 	response.WriteHeader(200)
 	fmt.Fprintf(response, "logged out\n")
 }
 
-func (auth *authenticationRouter) callback(response http.ResponseWriter, request *http.Request) {
+func (a *authenticationRouter) callback(response http.ResponseWriter, request *http.Request) {
 	code := request.URL.Query().Get("code")
 
 	if len(code) == 0 {
@@ -70,12 +110,12 @@ func (auth *authenticationRouter) callback(response http.ResponseWriter, request
 	client := http.Client{}
 	values := make(url.Values)
 	values.Set("code", code)
-	values.Set("client_id", auth.credentials.Google.ClientId)
-	values.Set("client_secret", auth.credentials.Google.ClientSecret)
-	values.Set("redirect_uri", auth.credentials.Google.RedirectUri)
+	values.Set("client_id", a.credentials.Google.ClientID)
+	values.Set("client_secret", a.credentials.Google.ClientSecret)
+	values.Set("redirect_uri", a.credentials.Google.RedirectURI)
 	values.Set("grant_type", "authorization_code")
 
-	result, e := client.PostForm(tokenUrl, values)
+	result, e := client.PostForm(tokenURL, values)
 
 	if e != nil {
 		log.Printf("failed code -> token exchange: %s", e)
@@ -98,14 +138,34 @@ func (auth *authenticationRouter) callback(response http.ResponseWriter, request
 		return
 	}
 
-	response.Header().Add("Location", auth.credentials.Krumpled.RedirectUri)
-	log.Printf("successfully got token '%v'", details.AccessToken)
+	info, e := a.fetchUserInfo(details.AccessToken)
+
+	if e != nil {
+		log.Printf("failed token -> info exchange: %s", e)
+		response.WriteHeader(422)
+		return
+	}
+
+	out, e := url.Parse(a.credentials.Krumpled.RedirectURI)
+
+	if e != nil {
+		log.Printf("failed krumpled url generation during auth: %s", e)
+		response.WriteHeader(422)
+		return
+	}
+
+	query := make(url.Values)
+	query.Set("token", info.ID)
+	out.RawQuery = query.Encode()
+
+	response.Header().Add("Location", out.String())
+	log.Printf("completed authentication")
 	response.WriteHeader(302)
 }
 
 // NewAuthenticationRouter returns the http handler that deals with login/logout routes.
-func NewAuthenticationRouter(creds credentials) (http.Handler, []string) {
-	router := &authenticationRouter{credentials: creds}
+func NewAuthenticationRouter(store auth.Store, creds credentials) (http.Handler, []string) {
+	router := &authenticationRouter{credentials: creds, store: store}
 	mux := http.NewServeMux()
 	mux.HandleFunc(login, router.login)
 	mux.HandleFunc(logout, router.logout)

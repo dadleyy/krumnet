@@ -4,6 +4,7 @@ import "log"
 import "fmt"
 import "strings"
 import "net/http"
+import "github.com/krumpled/api/server/auth"
 import "github.com/krumpled/api/server/routes"
 
 type server struct {
@@ -13,16 +14,24 @@ type server struct {
 func (s *server) init(options Options) error {
 	query := http.NewServeMux()
 
-	auth, patterns := routes.NewAuthenticationRouter(struct {
+	authStore, e := auth.NewRedisStore(options.Redis)
+
+	if e != nil {
+		return e
+	}
+
+	authConfig := struct {
 		Google struct {
-			ClientId     string
+			ClientID     string
 			ClientSecret string
-			RedirectUri  string
+			RedirectURI  string
 		}
 		Krumpled struct {
-			RedirectUri string
+			RedirectURI string
 		}
-	}{options.Google, options.Krumpled})
+	}{options.Google, options.Krumpled}
+
+	auth, patterns := routes.NewAuthenticationRouter(authStore, authConfig)
 
 	for _, p := range patterns {
 		query.Handle(p, auth)
