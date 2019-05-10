@@ -3,9 +3,15 @@ package main
 import "os"
 import "fmt"
 import "flag"
+import "github.com/joho/godotenv"
 import "github.com/krumpled/api/server"
 
 func main() {
+	if e := godotenv.Load(".env"); e != nil {
+		fmt.Printf("unable to load environment: %s", e)
+		os.Exit(1)
+	}
+
 	opts := server.Options{}
 	flag.StringVar(&opts.Addr, "address", ":1991", "http address")
 
