@@ -13,7 +13,16 @@ type server struct {
 func (s *server) init(options Options) error {
 	query := http.NewServeMux()
 
-	auth, patterns := routes.NewAuthenticationRouter()
+	auth, patterns := routes.NewAuthenticationRouter(struct {
+		Google struct {
+			ClientId     string
+			ClientSecret string
+			RedirectUri  string
+		}
+		Krumpled struct {
+			RedirectUri string
+		}
+	}{options.Google, options.Krumpled})
 
 	for _, p := range patterns {
 		query.Handle(p, auth)

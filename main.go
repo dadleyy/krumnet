@@ -13,7 +13,18 @@ func main() {
 	}
 
 	opts := server.Options{}
-	flag.StringVar(&opts.Addr, "address", ":1991", "http address")
+	opts.Google.ClientId = os.Getenv("GOOGLE_CLIENT_ID")
+	opts.Google.ClientSecret = os.Getenv("GOOGLE_CLIENT_SECRET")
+	opts.Google.RedirectUri = os.Getenv("GOOGLE_CLIENT_REDIRECT_URI")
+	opts.Krumpled.RedirectUri = os.Getenv("KRUMPLED_CLIENT_REDIRECT_URI")
+
+	flag.StringVar(&opts.Addr, "address", "0.0.0.0:8102", "http address")
+	flag.StringVar(&opts.Google.ClientId, "google-id", opts.Google.ClientId, "google client credentials")
+	flag.StringVar(&opts.Google.ClientSecret, "google-secret", opts.Google.ClientSecret, "google client credentials")
+	flag.StringVar(&opts.Google.RedirectUri, "google-redirect", opts.Google.RedirectUri, "google client credentials")
+	flag.StringVar(&opts.Krumpled.RedirectUri, "krumpled-redirect", opts.Krumpled.RedirectUri, "client app url")
+
+	flag.Parse()
 
 	handler, e := server.New(opts)
 
