@@ -1,5 +1,6 @@
 BIN=./dist/krumpled/api/bin
 EXE=$(BIN)/krumpled
+VENDOR_MANIFEST=./vendor/modules.txt
 SRC=$(shell git ls-files '*.go')
 GO=go
 RM=rm -rf
@@ -14,6 +15,10 @@ all: $(EXE)
 clean:
 	echo $(STUFF)
 	$(RM) $(BIN)
+	$(RM) ./vendor
+
+$(VENDOR_MANIFEST): go.mod go.sum
+	$(GO) mod vendor
 
 test: $(SRC)
 	$(GO) get -v -u golang.org/x/lint/golint
@@ -24,5 +29,5 @@ test: $(SRC)
 	gocyclo $(CYCLO_FLAGS) $(SRC)
 	golint -set_exit_status ./...
 
-$(EXE): $(SRC)
+$(EXE): $(SRC) $(VENDOR_MANIFEST)
 	$(GO) build -o $(EXE) $(BUILD_FLAGS)

@@ -30,7 +30,7 @@ type credentials struct {
 type authenticationRouter struct {
 	mux         *http.ServeMux
 	credentials credentials
-	store       auth.Store
+	store       auth.SessionStore
 }
 
 func (a *authenticationRouter) login(response http.ResponseWriter, request *http.Request) {
@@ -146,6 +146,16 @@ func (a *authenticationRouter) callback(response http.ResponseWriter, request *h
 		return
 	}
 
+	session, e := a.store.Create(info)
+
+	if e != nil {
+		log.Printf("failed session creation: %s", e)
+		response.WriteHeader(422)
+		return
+	}
+
+	log.Printf("created session '%s'", session.ID)
+
 	out, e := url.Parse(a.credentials.Krumpled.RedirectURI)
 
 	if e != nil {
@@ -164,7 +174,7 @@ func (a *authenticationRouter) callback(response http.ResponseWriter, request *h
 }
 
 // NewAuthenticationRouter returns the http handler that deals with login/logout routes.
-func NewAuthenticationRouter(store auth.Store, creds credentials) (http.Handler, []string) {
+func NewAuthenticationRouter(store auth.SessionStore, creds credentials) (http.Handler, []string) {
 	router := &authenticationRouter{credentials: creds, store: store}
 	mux := http.NewServeMux()
 	mux.HandleFunc(login, router.login)
