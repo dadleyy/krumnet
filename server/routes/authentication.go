@@ -5,31 +5,22 @@ import "fmt"
 import "net/url"
 import "net/http"
 import "encoding/json"
+import "github.com/krumpled/api/server/env"
 import "github.com/krumpled/api/server/auth"
 
 const (
 	login       = "/auth/login"
 	logout      = "/auth/logout"
+	identify    = "/auth/identify"
 	callback    = "/auth/google/callback"
 	discoverURL = "https://openidconnect.googleapis.com/v1/userinfo"
 	authURL     = "https://accounts.google.com/o/oauth2/v2/auth"
 	tokenURL    = "https://www.googleapis.com/oauth2/v4/token"
 )
 
-type credentials struct {
-	Google struct {
-		ClientID     string
-		ClientSecret string
-		RedirectURI  string
-	}
-	Krumpled struct {
-		RedirectURI string
-	}
-}
-
 type authenticationRouter struct {
 	mux         *http.ServeMux
-	credentials credentials
+	credentials env.ServerConfig
 	store       auth.SessionStore
 }
 
@@ -156,7 +147,7 @@ func (a *authenticationRouter) callback(response http.ResponseWriter, request *h
 
 	log.Printf("created session '%s'", session.ID)
 
-	out, e := url.Parse(a.credentials.Krumpled.RedirectURI)
+	out, e := url.Parse(a.credentials.Krumpled.ClientAddr)
 
 	if e != nil {
 		log.Printf("failed krumpled url generation during auth: %s", e)
@@ -165,7 +156,7 @@ func (a *authenticationRouter) callback(response http.ResponseWriter, request *h
 	}
 
 	query := make(url.Values)
-	query.Set("token", info.ID)
+	query.Set("token", session.Token())
 	out.RawQuery = query.Encode()
 
 	response.Header().Add("Location", out.String())
@@ -173,12 +164,21 @@ func (a *authenticationRouter) callback(response http.ResponseWriter, request *h
 	response.WriteHeader(302)
 }
 
+func (a *authenticationRouter) identify(response http.ResponseWriter, request *http.Request) {
+	response.WriteHeader(200)
+	fmt.Fprint(response, "ok\n")
+}
+
 // NewAuthenticationRouter returns the http handler that deals with login/logout routes.
-func NewAuthenticationRouter(store auth.SessionStore, creds credentials) (http.Handler, []string) {
+func NewAuthenticationRouter(store auth.SessionStore, creds env.ServerConfig) map[string]map[string]http.HandlerFunc {
 	router := &authenticationRouter{credentials: creds, store: store}
-	mux := http.NewServeMux()
-	mux.HandleFunc(login, router.login)
-	mux.HandleFunc(logout, router.logout)
-	mux.HandleFunc(callback, router.callback)
-	return mux, []string{login, logout, callback}
+
+	return map[string]map[string]http.HandlerFunc{
+		"get": {
+			login:    router.login,
+			logout:   router.logout,
+			identify: router.identify,
+			callback: router.callback,
+		},
+	}
 }

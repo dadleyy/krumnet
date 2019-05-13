@@ -6,38 +6,36 @@ import "strings"
 import "net/http"
 import "github.com/krumpled/api/server/auth"
 import "github.com/krumpled/api/server/routes"
+import "github.com/krumpled/api/server/env"
 
 type server struct {
 	verbs map[string]*http.ServeMux
 }
 
-func (s *server) init(options Options) error {
+func (s *server) init(options env.ServerConfig) error {
 	query := http.NewServeMux()
 
-	authStore, e := auth.NewRedisStore(options.Redis)
+	// Initialize services
+	authStore, e := auth.NewRedisStore(options)
 
 	if e != nil {
 		return e
 	}
 
-	authConfig := struct {
-		Google struct {
-			ClientID     string
-			ClientSecret string
-			RedirectURI  string
-		}
-		Krumpled struct {
-			RedirectURI string
-		}
-	}{options.Google, options.Krumpled}
-
-	auth, patterns := routes.NewAuthenticationRouter(authStore, authConfig)
-
-	for _, p := range patterns {
-		query.Handle(p, auth)
-	}
-
 	s.verbs = map[string]*http.ServeMux{"get": query}
+
+	for method, handler := range routes.NewAuthenticationRouter(authStore, options) {
+		methodMultiplexer, ok := s.verbs[strings.ToLower(method)]
+
+		if !ok {
+			return fmt.Errorf("unable to find method handler for '%s'", strings.ToLower(method))
+		}
+
+		for key, handle := range handler {
+			log.Printf("handling '%s %s'", method, key)
+			methodMultiplexer.Handle(key, handle)
+		}
+	}
 
 	return nil
 }
@@ -64,12 +62,12 @@ func (s *server) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 }
 
 // New constructs the krumpled http.Server
-func New(opts Options) (*http.Server, error) {
+func New(opts env.ServerConfig) (*http.Server, error) {
 	handler := &server{}
 
 	if e := handler.init(opts); e != nil {
 		return nil, e
 	}
 
-	return &http.Server{Handler: handler, Addr: opts.Addr}, nil
+	return &http.Server{Handler: handler, Addr: opts.Krumpled.ServerAddr}, nil
 }

@@ -27,7 +27,7 @@ test: $(SRC)
 	$(GO) vet
 	misspell -error $(SRC)
 	gocyclo $(CYCLO_FLAGS) $(SRC)
-	golint -set_exit_status ./...
+	$(GO) list ./... | grep -v /vendor/ | xargs -L1 golint -set_exit_status
 
 $(EXE): $(SRC) $(VENDOR_MANIFEST)
 	$(GO) build -o $(EXE) $(BUILD_FLAGS)
