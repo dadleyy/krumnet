@@ -31,7 +31,9 @@ func main() {
 	flag.StringVar(&opts.Google.RedirectURI, "google-redirect", opts.Google.RedirectURI, "google client credentials")
 	flag.StringVar(&opts.Redis.Addr, "redis-addr", opts.Redis.Addr, "redis uri")
 	flag.StringVar(&opts.Redis.Password, "redis-password", opts.Redis.Password, "redis password")
+	flag.BoolVar(&opts.Startup.ClearAuthStore, "clear-auth", false, "clear auth store")
 
+	log.SetFlags(log.Ldate | log.LstdFlags | log.Lshortfile)
 	flag.Parse()
 
 	log.Printf("initializing server, warming connections")

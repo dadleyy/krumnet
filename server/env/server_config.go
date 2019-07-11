@@ -7,4 +7,7 @@ type ServerConfig struct {
 	Google   GoogleConfig
 	Redis    redis.Options
 	Krumpled KrumpledConfig
+	Startup  struct {
+		ClearAuthStore bool
+	}
 }

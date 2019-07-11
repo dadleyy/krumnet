@@ -7,6 +7,7 @@ import "net/http"
 import "encoding/json"
 import "github.com/krumpled/api/server/env"
 import "github.com/krumpled/api/server/auth"
+import "github.com/krumpled/api/server/routing"
 
 const (
 	login       = "/auth/login"
@@ -156,7 +157,7 @@ func (a *authenticationRouter) callback(response http.ResponseWriter, request *h
 	}
 
 	query := make(url.Values)
-	query.Set("token", session.Token())
+	query.Set("token", session.Token)
 	out.RawQuery = query.Encode()
 
 	response.Header().Add("Location", out.String())
@@ -165,20 +166,49 @@ func (a *authenticationRouter) callback(response http.ResponseWriter, request *h
 }
 
 func (a *authenticationRouter) identify(response http.ResponseWriter, request *http.Request) {
-	response.WriteHeader(200)
-	fmt.Fprint(response, "ok\n")
+	defer request.Body.Close()
+
+	decoder := json.NewDecoder(request.Body)
+	payload := struct {
+		Token string `json:"token"`
+	}{}
+
+	if e := decoder.Decode(&payload); e != nil {
+		response.WriteHeader(422)
+		return
+	}
+
+	log.Printf("identifying user based on token %s", payload.Token)
+
+	user, e := a.store.Find(payload.Token)
+
+	if e != nil {
+		log.Printf("unable to find user: %s", e)
+		response.WriteHeader(422)
+		return
+	}
+
+	log.Printf("found user '%s'", user.ID)
+
+	encoder := json.NewEncoder(response)
+	response.Header().Add("Content-Type", "application/json")
+
+	if e := encoder.Encode(struct {
+		User auth.UserInfo `json:"user"`
+	}{user}); e != nil {
+		response.WriteHeader(500)
+		return
+	}
 }
 
 // NewAuthenticationRouter returns the http handler that deals with login/logout routes.
-func NewAuthenticationRouter(store auth.SessionStore, creds env.ServerConfig) map[string]map[string]http.HandlerFunc {
+func NewAuthenticationRouter(store auth.SessionStore, creds env.ServerConfig) routing.Multiplex {
 	router := &authenticationRouter{credentials: creds, store: store}
 
-	return map[string]map[string]http.HandlerFunc{
-		"get": {
-			login:    router.login,
-			logout:   router.logout,
-			identify: router.identify,
-			callback: router.callback,
-		},
+	return routing.Multiplex{
+		{Method: routing.Get, Pattern: login, Handler: router.login},
+		{Method: routing.Get, Pattern: logout, Handler: router.logout},
+		{Method: routing.Get, Pattern: callback, Handler: router.callback},
+		{Method: routing.Post, Pattern: identify, Handler: router.identify},
 	}
 }

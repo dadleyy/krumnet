@@ -2,63 +2,50 @@ package server
 
 import "log"
 import "fmt"
-import "strings"
 import "net/http"
 import "github.com/krumpled/api/server/auth"
 import "github.com/krumpled/api/server/routes"
+import "github.com/krumpled/api/server/routing"
 import "github.com/krumpled/api/server/env"
 
 type server struct {
-	verbs map[string]*http.ServeMux
+	routing routing.Multiplex
+	auth    auth.SessionStore
 }
 
 func (s *server) init(options env.ServerConfig) error {
-	query := http.NewServeMux()
+	var e error
+	s.auth, e = auth.NewRedisStore(options)
 
-	// Initialize services
-	authStore, e := auth.NewRedisStore(options)
+	if options.Startup.ClearAuthStore {
+		log.Printf("clearing auth store, all sessions will be invalidated")
+		s.auth.Purge()
+	}
+
+	s.routing = append(s.routing, routes.NewAuthenticationRouter(s.auth, options)...)
 
 	if e != nil {
 		return e
 	}
 
-	s.verbs = map[string]*http.ServeMux{"get": query}
-
-	for method, handler := range routes.NewAuthenticationRouter(authStore, options) {
-		methodMultiplexer, ok := s.verbs[strings.ToLower(method)]
-
-		if !ok {
-			return fmt.Errorf("unable to find method handler for '%s'", strings.ToLower(method))
-		}
-
-		for key, handle := range handler {
-			log.Printf("handling '%s %s'", method, key)
-			methodMultiplexer.Handle(key, handle)
-		}
-	}
-
 	return nil
+}
+
+func (s *server) notFound(response http.ResponseWriter, request *http.Request) {
+	response.WriteHeader(http.StatusNotFound)
+	log.Printf("request not found")
+	fmt.Fprintf(response, "not found")
 }
 
 func (s *server) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	log.Printf("request %s %v", request.Method, request.URL)
-	multiplexer, ok := s.verbs[strings.ToLower(request.Method)]
-
-	if !ok || multiplexer == nil {
-		response.WriteHeader(422)
-		fmt.Fprintf(response, "bad-verb\n")
-		return
-	}
-
-	handler, pattern := multiplexer.Handler(request)
+	handler := s.routing.Match(request)
 
 	if handler == nil {
-		response.WriteHeader(404)
-		log.Printf("404: %s", pattern)
-		return
+		handler = s.notFound
 	}
 
-	handler.ServeHTTP(response, request)
+	handler(response, request)
 }
 
 // New constructs the krumpled http.Server
