@@ -4,5 +4,6 @@ package auth
 type SessionStore interface {
 	Find(token string) (UserInfo, error)
 	Create(info UserInfo) (SessionHandle, error)
+	Destroy(token string) error
 	Purge() error
 }

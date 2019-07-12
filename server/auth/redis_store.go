@@ -4,8 +4,8 @@ import "io"
 import "fmt"
 import "log"
 import "time"
-import "strings"
 import "bytes"
+import "strings"
 import "crypto/aes"
 import "crypto/rand"
 import "crypto/md5"
@@ -25,6 +25,7 @@ type redisStore struct {
 	secret string
 }
 
+// encrypt uses the secret registered to encrypt plaintext.
 func (r *redisStore) encrypt(data []byte) (string, error) {
 	block, e := aes.NewCipher([]byte(r.secret))
 
@@ -48,6 +49,7 @@ func (r *redisStore) encrypt(data []byte) (string, error) {
 	return hex.EncodeToString(ciphertext), nil
 }
 
+// decrypt uses the secret registered to return a plaintext string representation of an encrypted string.
 func (r *redisStore) decrypt(input string) (string, error) {
 	decoded, e := hex.DecodeString(input)
 
@@ -78,26 +80,42 @@ func (r *redisStore) decrypt(input string) (string, error) {
 	return fmt.Sprintf("%s", plaintext), nil
 }
 
-func (r *redisStore) Find(token string) (UserInfo, error) {
+func (r *redisStore) keyforId(id string) string {
+	return fmt.Sprintf("%s:session:%s", sessionPrefix, id)
+}
+
+// keyForToken is responsible for ensuring the validty and decryption of a token info a key.
+func (r *redisStore) keyForToken(token string) (string, error) {
 	if len(token) == 0 {
-		return UserInfo{}, fmt.Errorf("invalid token")
+		return "", fmt.Errorf("invalid token")
 	}
 
 	decrypted, e := r.decrypt(token)
+
+	if e != nil {
+		return "", e
+	}
+
+	return r.keyforId(decrypted), nil
+}
+
+// Find returns the user info that has been encrypted into the key assocaited with the provided token.
+func (r *redisStore) Find(token string) (UserInfo, error) {
+	key, e := r.keyForToken(token)
 
 	if e != nil {
 		log.Printf("unable to decode token '%s': %s", token, e)
 		return UserInfo{}, e
 	}
 
-	log.Printf("successfully decrypted token '%s'", decrypted)
+	log.Printf("successfully decrypted token '%s'", key)
 
-	lookupResult := r.client.Get(fmt.Sprintf("%s:session:%s", sessionPrefix, decrypted))
+	lookupResult := r.client.Get(key)
 
 	data, e := lookupResult.Result()
 
 	if e != nil {
-		log.Printf("unable to find session by '%s'", decrypted)
+		log.Printf("unable to find session by '%s'", key)
 		return UserInfo{}, e
 	}
 
@@ -105,7 +123,7 @@ func (r *redisStore) Find(token string) (UserInfo, error) {
 	userString, e := r.decrypt(data)
 
 	if e != nil {
-		log.Printf("unable to decrypt session by '%s': %s", decrypted, e)
+		log.Printf("unable to decrypt session by '%s': %s", key, e)
 		return UserInfo{}, e
 	}
 
@@ -113,7 +131,7 @@ func (r *redisStore) Find(token string) (UserInfo, error) {
 	decoder := json.NewDecoder(strings.NewReader(userString))
 
 	if e := decoder.Decode(&result); e != nil {
-		log.Printf("unable to decrypt session by '%s': %s", decrypted, e)
+		log.Printf("unable to decrypt session by '%s': %s", key, e)
 		return UserInfo{}, e
 	}
 
@@ -122,6 +140,20 @@ func (r *redisStore) Find(token string) (UserInfo, error) {
 	return result, nil
 }
 
+// Destroy exectures a DEL command for the key associated with the provided token.
+func (r *redisStore) Destroy(token string) error {
+	key, e := r.keyForToken(token)
+
+	if e != nil {
+		return e
+	}
+
+	result := r.client.Del(key)
+
+	return result.Err()
+}
+
+// Create will insert the provided user info into a new uniquely identifyable key in redis.
 func (r *redisStore) Create(info UserInfo) (SessionHandle, error) {
 	id := fmt.Sprintf("%s", uuid.New())
 
@@ -140,8 +172,9 @@ func (r *redisStore) Create(info UserInfo) (SessionHandle, error) {
 
 	log.Printf("created encrypted session:\n%s\n", serialized)
 
-	expires := time.Until(time.Now().Add(time.Minute))
-	result := r.client.Set(fmt.Sprintf("%s:session:%s", sessionPrefix, id), serialized, expires)
+	key := r.keyforId(id)
+	expires := time.Until(time.Now().AddDate(0, 0, 30))
+	result := r.client.Set(key, serialized, expires)
 
 	if e := result.Err(); e != nil {
 		log.Printf("failed storing session: %s", e)
@@ -158,6 +191,7 @@ func (r *redisStore) Create(info UserInfo) (SessionHandle, error) {
 	return SessionHandle{ID: id, Token: token}, nil
 }
 
+// Purge destroys all active sessions.
 func (r *redisStore) Purge() error {
 	log.Printf("puring all sessions")
 	keyCommand := redis.NewStringSliceCmd("KEYS", fmt.Sprintf("%s*", sessionPrefix))

@@ -85,8 +85,23 @@ func (a *authenticationRouter) fetchUserInfo(token string) (auth.UserInfo, error
 }
 
 func (a *authenticationRouter) logout(response http.ResponseWriter, request *http.Request) {
-	response.WriteHeader(200)
-	fmt.Fprintf(response, "logged out\n")
+	token := request.URL.Query().Get("token")
+
+	if len(token) == 0 {
+		response.WriteHeader(404)
+		return
+	}
+
+	if e := a.store.Destroy(token); e != nil {
+		log.Printf("unable to destroy session via '%s'", token)
+		response.Header().Add("Location", a.credentials.Krumpled.ClientAddr)
+		response.WriteHeader(302)
+		return
+	}
+
+	log.Printf("logout: '%s'", token)
+	response.Header().Add("Location", a.credentials.Krumpled.ClientAddr)
+	response.WriteHeader(302)
 }
 
 func (a *authenticationRouter) callback(response http.ResponseWriter, request *http.Request) {
