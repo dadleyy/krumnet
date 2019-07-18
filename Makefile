@@ -13,7 +13,6 @@ CYCLO_FLAGS=-over 15
 all: $(EXE)
 
 clean:
-	echo $(STUFF)
 	$(RM) $(BIN)
 	$(RM) ./vendor
 
