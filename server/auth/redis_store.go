@@ -80,7 +80,7 @@ func (r *redisStore) decrypt(input string) (string, error) {
 	return fmt.Sprintf("%s", plaintext), nil
 }
 
-func (r *redisStore) keyforId(id string) string {
+func (r *redisStore) keyforID(id string) string {
 	return fmt.Sprintf("%s:session:%s", sessionPrefix, id)
 }
 
@@ -99,7 +99,7 @@ func (r *redisStore) keyForToken(token string) (string, error) {
 	return r.keyforId(decrypted), nil
 }
 
-// Find returns the user info that has been encrypted into the key assocaited with the provided token.
+// Find returns the user info that has been encrypted into the key associated with the provided token.
 func (r *redisStore) Find(token string) (UserInfo, error) {
 	key, e := r.keyForToken(token)
 
@@ -153,7 +153,7 @@ func (r *redisStore) Destroy(token string) error {
 	return result.Err()
 }
 
-// Create will insert the provided user info into a new uniquely identifyable key in redis.
+// Create will insert the provided user info into a new uniquely identifiable key in redis.
 func (r *redisStore) Create(info UserInfo) (SessionHandle, error) {
 	id := fmt.Sprintf("%s", uuid.New())
 
