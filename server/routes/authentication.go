@@ -25,28 +25,7 @@ type authenticationRouter struct {
 	store       auth.SessionStore
 }
 
-func (a *authenticationRouter) login(response http.ResponseWriter, request *http.Request) {
-	header := response.Header()
-	destination, e := url.Parse(authURL)
-
-	if e != nil {
-		log.Printf("unable to parse auth url: %s", e)
-		response.WriteHeader(500)
-		return
-	}
-
-	query := make(url.Values)
-	query.Set("response_type", "code")
-	query.Set("client_id", a.credentials.Google.ClientID)
-	query.Set("scope", "email profile")
-	query.Set("redirect_uri", a.credentials.Google.RedirectURI)
-	destination.RawQuery = query.Encode()
-
-	header.Add("Location", destination.String())
-	header.Add("Server", "krumpled-api")
-	response.WriteHeader(302)
-}
-
+// fetchuserInfo requests available user information from the google open id api.
 func (a *authenticationRouter) fetchUserInfo(token string) (auth.UserInfo, error) {
 	discover, e := http.NewRequest("GET", discoverURL, nil)
 
@@ -84,6 +63,30 @@ func (a *authenticationRouter) fetchUserInfo(token string) (auth.UserInfo, error
 	return auth.UserInfo{Email: info.Email, ID: info.ID, Name: info.Name}, nil
 }
 
+// login - GET /auth/login - inititates the login process by sending the user to the google authentication url.
+func (a *authenticationRouter) login(response http.ResponseWriter, request *http.Request) {
+	header := response.Header()
+	destination, e := url.Parse(authURL)
+
+	if e != nil {
+		log.Printf("unable to parse auth url: %s", e)
+		response.WriteHeader(500)
+		return
+	}
+
+	query := make(url.Values)
+	query.Set("response_type", "code")
+	query.Set("client_id", a.credentials.Google.ClientID)
+	query.Set("scope", "email profile")
+	query.Set("redirect_uri", a.credentials.Google.RedirectURI)
+	destination.RawQuery = query.Encode()
+
+	header.Add("Location", destination.String())
+	header.Add("Server", "krumpled-api")
+	response.WriteHeader(302)
+}
+
+// logout - GET /auth/logout - will clear the session assocaited with the token provided in the query parameters.
 func (a *authenticationRouter) logout(response http.ResponseWriter, request *http.Request) {
 	token := request.URL.Query().Get("token")
 
@@ -104,6 +107,8 @@ func (a *authenticationRouter) logout(response http.ResponseWriter, request *htt
 	response.WriteHeader(302)
 }
 
+// callback - GET /auth/google/callback - is the redirect uri provided to the google oauth client. users are sent here
+// after having successfully authenticated with google.
 func (a *authenticationRouter) callback(response http.ResponseWriter, request *http.Request) {
 	code := request.URL.Query().Get("code")
 
@@ -180,6 +185,7 @@ func (a *authenticationRouter) callback(response http.ResponseWriter, request *h
 	response.WriteHeader(302)
 }
 
+// identify - POST /auth/identify - is used to retrieve user information given a token.
 func (a *authenticationRouter) identify(response http.ResponseWriter, request *http.Request) {
 	defer request.Body.Close()
 
