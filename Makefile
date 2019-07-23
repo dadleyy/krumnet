@@ -29,6 +29,7 @@ lint: $(SRC)
 	misspell -error $(SRC)
 	gocyclo $(CYCLO_FLAGS) $(SRC)
 	$(GO) list ./... | grep -v /vendor/ | xargs -L1 golint -set_exit_status
+	$(GO) mod tidy
 
 test: $(SRC)
 	mkdir -p $(basename $(COVERPROFILE))

@@ -63,6 +63,40 @@ func (a *authenticationRouter) fetchUserInfo(token string) (auth.UserInfo, error
 	return auth.UserInfo{Email: info.Email, ID: info.ID, Name: info.Name}, nil
 }
 
+func (a *authenticationRouter) exchangeCode(code string) (string, error) {
+	client := http.Client{}
+	values := make(url.Values)
+	values.Set("code", code)
+	values.Set("client_id", a.credentials.Google.ClientID)
+	values.Set("client_secret", a.credentials.Google.ClientSecret)
+	values.Set("redirect_uri", a.credentials.Google.RedirectURI)
+	values.Set("grant_type", "authorization_code")
+
+	result, e := client.PostForm(tokenURL, values)
+
+	if e != nil {
+		log.Printf("failed code -> token exchange: %s", e)
+		return "", e
+	}
+
+	defer result.Body.Close()
+
+	decoder := json.NewDecoder(result.Body)
+	details := struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int    `json:"expires_in"`
+		TokenType    string `json:"token_type"`
+	}{}
+
+	if e := decoder.Decode(&details); e != nil {
+		log.Printf("failed code -> token exchange: %s", e)
+		return "", e
+	}
+
+	return details.AccessToken, nil
+}
+
 // login - GET /auth/login - inititates the login process by sending the user to the google authentication url.
 func (a *authenticationRouter) login(response http.ResponseWriter, request *http.Request) {
 	header := response.Header()
@@ -86,7 +120,7 @@ func (a *authenticationRouter) login(response http.ResponseWriter, request *http
 	response.WriteHeader(302)
 }
 
-// logout - GET /auth/logout - will clear the session assocaited with the token provided in the query parameters.
+// logout - GET /auth/logout - will clear the session associated with the token provided in the query parameters.
 func (a *authenticationRouter) logout(response http.ResponseWriter, request *http.Request) {
 	token := request.URL.Query().Get("token")
 
@@ -119,38 +153,15 @@ func (a *authenticationRouter) callback(response http.ResponseWriter, request *h
 
 	log.Printf("received google auth code, exchanging for token")
 
-	client := http.Client{}
-	values := make(url.Values)
-	values.Set("code", code)
-	values.Set("client_id", a.credentials.Google.ClientID)
-	values.Set("client_secret", a.credentials.Google.ClientSecret)
-	values.Set("redirect_uri", a.credentials.Google.RedirectURI)
-	values.Set("grant_type", "authorization_code")
-
-	result, e := client.PostForm(tokenURL, values)
+	token, e := a.exchangeCode(code)
 
 	if e != nil {
-		log.Printf("failed code -> token exchange: %s", e)
-		response.WriteHeader(422)
-		return
-	}
-	defer result.Body.Close()
-
-	decoder := json.NewDecoder(result.Body)
-	details := struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
-		ExpiresIn    int    `json:"expires_in"`
-		TokenType    string `json:"token_type"`
-	}{}
-
-	if e := decoder.Decode(&details); e != nil {
-		log.Printf("failed code -> token exchange: %s", e)
+		log.Printf("failed token -> info exchange: %s", e)
 		response.WriteHeader(422)
 		return
 	}
 
-	info, e := a.fetchUserInfo(details.AccessToken)
+	info, e := a.fetchUserInfo(token)
 
 	if e != nil {
 		log.Printf("failed token -> info exchange: %s", e)
