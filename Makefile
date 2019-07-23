@@ -1,5 +1,6 @@
+NAME=krumnet
 BIN=./dist/krumpled/api/bin
-EXE=$(BIN)/krumpled
+EXE=$(BIN)/$(NAME)
 VENDOR_MANIFEST=./vendor/modules.txt
 SRC=$(shell git ls-files '*.go')
 GO=go

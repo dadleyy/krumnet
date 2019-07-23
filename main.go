@@ -5,8 +5,8 @@ import "fmt"
 import "log"
 import "flag"
 import "github.com/joho/godotenv"
-import "github.com/krumpled/api/server"
-import "github.com/krumpled/api/server/env"
+import "github.com/krumpled/krumnet/server"
+import "github.com/krumpled/krumnet/server/env"
 
 func main() {
 	if e := godotenv.Load(".env"); e != nil {

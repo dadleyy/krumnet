@@ -3,10 +3,10 @@ package server
 import "log"
 import "fmt"
 import "net/http"
-import "github.com/krumpled/api/server/auth"
-import "github.com/krumpled/api/server/routes"
-import "github.com/krumpled/api/server/routing"
-import "github.com/krumpled/api/server/env"
+import "github.com/krumpled/krumnet/server/auth"
+import "github.com/krumpled/krumnet/server/routes"
+import "github.com/krumpled/krumnet/server/routing"
+import "github.com/krumpled/krumnet/server/env"
 
 type server struct {
 	routing routing.Multiplex

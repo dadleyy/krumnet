@@ -1,4 +1,4 @@
-module github.com/krumpled/api
+module github.com/krumpled/krumnet
 
 go 1.12
 

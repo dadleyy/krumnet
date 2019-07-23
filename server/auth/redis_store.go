@@ -14,7 +14,7 @@ import "encoding/json"
 import "crypto/cipher"
 import "github.com/google/uuid"
 import "github.com/go-redis/redis"
-import "github.com/krumpled/api/server/env"
+import "github.com/krumpled/krumnet/server/env"
 
 const (
 	sessionPrefix = "krumpled_session"
@@ -80,7 +80,7 @@ func (r *redisStore) decrypt(input string) (string, error) {
 	return fmt.Sprintf("%s", plaintext), nil
 }
 
-func (r *redisStore) keyforID(id string) string {
+func (r *redisStore) keyForID(id string) string {
 	return fmt.Sprintf("%s:session:%s", sessionPrefix, id)
 }
 
@@ -96,7 +96,7 @@ func (r *redisStore) keyForToken(token string) (string, error) {
 		return "", e
 	}
 
-	return r.keyforId(decrypted), nil
+	return r.keyForID(decrypted), nil
 }
 
 // Find returns the user info that has been encrypted into the key associated with the provided token.
@@ -172,7 +172,7 @@ func (r *redisStore) Create(info UserInfo) (SessionHandle, error) {
 
 	log.Printf("created encrypted session:\n%s\n", serialized)
 
-	key := r.keyforId(id)
+	key := r.keyForID(id)
 	expires := time.Until(time.Now().AddDate(0, 0, 30))
 	result := r.client.Set(key, serialized, expires)
 

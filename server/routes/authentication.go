@@ -5,9 +5,9 @@ import "fmt"
 import "net/url"
 import "net/http"
 import "encoding/json"
-import "github.com/krumpled/api/server/env"
-import "github.com/krumpled/api/server/auth"
-import "github.com/krumpled/api/server/routing"
+import "github.com/krumpled/krumnet/server/env"
+import "github.com/krumpled/krumnet/server/auth"
+import "github.com/krumpled/krumnet/server/routing"
 
 const (
 	login       = "/auth/login"
