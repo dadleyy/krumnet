@@ -8,13 +8,19 @@ go:
   - "1.12"
 jobs:
   include:
-    - stage: build
+    - stage: "build and test"
       name: "build"
       script: make
     - name: "test"
       script: make test
     - name: "lint"
       script: make lint
+    - stage: "deploy"
+      script: echo "todo"
+stages:
+  - "build and test"
+  - name: "deploy"
+    if: branch = master
 env:
   global:
     - GO111MODULE=on
