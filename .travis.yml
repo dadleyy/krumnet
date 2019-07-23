@@ -9,10 +9,11 @@ go:
 jobs:
   include:
     - stage: build
+      name: "build"
       script: make
-    - stage: test
+    - name: "test"
       script: make test
-    - stage: lint
+    - name: "lint"
       script: make lint
 env:
   global:
