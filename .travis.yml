@@ -8,18 +8,18 @@ go:
   - "1.12"
 jobs:
   include:
-    - stage: "build and test"
+    - stage: "Build and Test"
       name: "build"
       script: make
     - name: "test"
       script: make test
     - name: "lint"
       script: make lint
-    - stage: "deploy"
+    - stage: "Deploy"
       script: echo "todo"
 stages:
-  - "build and test"
-  - name: "deploy"
+  - "Build and Test"
+  - name: "Deploy"
     if: branch = master
 env:
   global:
