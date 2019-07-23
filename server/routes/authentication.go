@@ -63,16 +63,19 @@ func (a *authenticationRouter) fetchUserInfo(token string) (auth.UserInfo, error
 	return auth.UserInfo{Email: info.Email, ID: info.ID, Name: info.Name}, nil
 }
 
-func (a *authenticationRouter) exchangeCode(code string) (string, error) {
-	client := http.Client{}
+func (a *authenticationRouter) tokenFormForCode(code string) url.Values {
 	values := make(url.Values)
 	values.Set("code", code)
 	values.Set("client_id", a.credentials.Google.ClientID)
 	values.Set("client_secret", a.credentials.Google.ClientSecret)
 	values.Set("redirect_uri", a.credentials.Google.RedirectURI)
 	values.Set("grant_type", "authorization_code")
+	return values
+}
 
-	result, e := client.PostForm(tokenURL, values)
+func (a *authenticationRouter) exchangeCode(code string) (string, error) {
+	client := http.Client{}
+	result, e := client.PostForm(tokenURL, a.tokenFormForCode(code))
 
 	if e != nil {
 		log.Printf("failed code -> token exchange: %s", e)
