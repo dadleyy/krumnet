@@ -1,5 +1,5 @@
 [package]
-name = "krapi"
+name = "krumnet"
 version = "0.1.0"
 authors = ["Danny Hadley <dadleyy@gmail.com>"]
 edition = "2018"
