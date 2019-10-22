@@ -5,8 +5,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v1
-      - name: libusb
-        run: sudo apt-get install libusb-1.0.0-dev -y
       - name: build
         run: cargo build --verbose
       - name: test
