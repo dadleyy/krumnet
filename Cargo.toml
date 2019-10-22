@@ -4,5 +4,14 @@ version = "0.1.0"
 authors = ["Danny Hadley <dadleyy@gmail.com>"]
 edition = "2018"
 
+[lib]
+name = "krumnet"
+path = "src/lib.rs"
+
+[[bin]]
+name = "krumnet"
+path = "src/bin/main.rs"
+
 [dependencies]
 async-std = "0.99.10"
+http = "0.1.19"
