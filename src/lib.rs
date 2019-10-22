@@ -11,33 +11,28 @@ use async_std::task;
 use async_std::io::BufReader;
 use async_std::net::{TcpListener, TcpStream};
 
-fn parse_name(raw_value: &str) -> Result<HeaderName, Error> {
-    HeaderName::from_bytes(raw_value.as_bytes()).map_err(|e| {
-        println!("[warning] invalid header value {:?}", e);
-        Error::from(ErrorKind::InvalidData)
-    })
+fn parse_header_name(raw_value: &str) -> Result<HeaderName, Error> {
+    HeaderName::from_bytes(raw_value.as_bytes()).map_err(|_e| Error::from(ErrorKind::InvalidData))
 }
 
 
-fn parse_value(raw_value: &str) -> Result<HeaderValue, Error> {
-    HeaderValue::from_bytes(raw_value.as_bytes()).map_err(|e| {
-        println!("[warning] invalid header value {:?}", e);
-        Error::from(ErrorKind::InvalidData)
-    })
+fn parse_header_value(raw_value: &str) -> Result<HeaderValue, Error> {
+    HeaderValue::from_bytes(raw_value.as_bytes()).map_err(|_e| Error::from(ErrorKind::InvalidData))
 }
 
-fn parse_bits(line: String) -> Result<(HeaderName, HeaderValue), Error> {
+fn parse_header_line(line: String) -> Result<(HeaderName, HeaderValue), Error> {
     let mut bytes = line.split(":");
     match (bytes.next(), bytes.next()) {
         (Some(left), Some(right)) => {
-            Ok((parse_name(left)?, parse_value(right)?))
+            Ok((parse_header_name(left)?, parse_header_value(right)?))
         },
         _ => Err(Error::from(ErrorKind::InvalidData)),
     }
 }
 
-async fn handle(mut stream: TcpStream) -> Result<(), Error> {
-    let mut reader = BufReader::new(&stream).lines().take(10);
+async fn read_request<T>(reader: T) -> Result<(), Error>
+where T: async_std::io::Read + std::marker::Unpin {
+    let mut reader = BufReader::new(reader).lines().take(10);
     let request_line = reader.next().await.ok_or(Error::from(ErrorKind::InvalidData))??;
     println!("[debug] starting header parse for {:?}", request_line);
 
@@ -45,7 +40,7 @@ async fn handle(mut stream: TcpStream) -> Result<(), Error> {
         match reader.next().await {
             Some(Ok(line)) if line.is_empty() => break,
             Some(Ok(line)) => {
-                match parse_bits(line) {
+                match parse_header_line(line) {
                     Ok((name, value)) => {
                         println!("name[{}] value[{:?}]", name, value);
                    },
@@ -62,6 +57,12 @@ async fn handle(mut stream: TcpStream) -> Result<(), Error> {
         }
     }
 
+    Ok(())
+}
+
+async fn handle(mut stream: TcpStream) -> Result<(), Error> {
+    read_request(&stream).await?;
+    println!("[debug] request processed");
     stream.write(b"HTTP/1.1 200 OK\r\nContent-Legnth: 0\r\n\r\n").await?;
     stream.flush().await
 }
