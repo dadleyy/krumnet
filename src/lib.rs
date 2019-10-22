@@ -2,19 +2,18 @@ extern crate http;
 
 pub mod google;
 
-use google::GoogleCredentials;
-use http::header::{HeaderName, HeaderValue};
-use std::sync::mpsc::{channel, Receiver};
-use std::io::{Error, ErrorKind};
-use async_std::prelude::*;
-use async_std::task;
 use async_std::io::BufReader;
 use async_std::net::{TcpListener, TcpStream};
+use async_std::prelude::*;
+use async_std::task;
+use google::GoogleCredentials;
+use http::header::{HeaderMap, HeaderName, HeaderValue};
+use std::io::{Error, ErrorKind};
+use std::sync::mpsc::{channel, Receiver};
 
 fn parse_header_name(raw_value: &str) -> Result<HeaderName, Error> {
     HeaderName::from_bytes(raw_value.as_bytes()).map_err(|_e| Error::from(ErrorKind::InvalidData))
 }
-
 
 fn parse_header_value(raw_value: &str) -> Result<HeaderValue, Error> {
     HeaderValue::from_bytes(raw_value.as_bytes()).map_err(|_e| Error::from(ErrorKind::InvalidData))
@@ -23,47 +22,52 @@ fn parse_header_value(raw_value: &str) -> Result<HeaderValue, Error> {
 fn parse_header_line(line: String) -> Result<(HeaderName, HeaderValue), Error> {
     let mut bytes = line.split(":");
     match (bytes.next(), bytes.next()) {
-        (Some(left), Some(right)) => {
-            Ok((parse_header_name(left)?, parse_header_value(right)?))
-        },
+        (Some(left), Some(right)) => Ok((parse_header_name(left)?, parse_header_value(right)?)),
         _ => Err(Error::from(ErrorKind::InvalidData)),
     }
 }
 
-async fn read_request<T>(reader: T) -> Result<(), Error>
-where T: async_std::io::Read + std::marker::Unpin {
+async fn read_headers<T>(reader: T) -> Result<HeaderMap, Error>
+where
+    T: async_std::io::Read + std::marker::Unpin,
+{
     let mut reader = BufReader::new(reader).lines().take(10);
-    let request_line = reader.next().await.ok_or(Error::from(ErrorKind::InvalidData))??;
+    let mut map = HeaderMap::new();
+
+    let request_line = reader
+        .next()
+        .await
+        .ok_or(Error::from(ErrorKind::InvalidData))??;
     println!("[debug] starting header parse for {:?}", request_line);
 
     loop {
         match reader.next().await {
             Some(Ok(line)) if line.is_empty() => break,
-            Some(Ok(line)) => {
-                match parse_header_line(line) {
-                    Ok((name, value)) => {
-                        println!("name[{}] value[{:?}]", name, value);
-                   },
-                    _ => {
-                        return Err(Error::from(ErrorKind::InvalidData));
-                    }
+            Some(Ok(line)) => match parse_header_line(line) {
+                Ok((name, value)) => {
+                    map.insert(name, value);
+                }
+                _ => {
+                    return Err(Error::from(ErrorKind::InvalidData));
                 }
             },
             None => break,
             Some(Err(e)) => {
                 println!("[error] unable to parse");
                 return Err(e);
-            },
+            }
         }
     }
 
-    Ok(())
+    Ok(map)
 }
 
 async fn handle(mut stream: TcpStream) -> Result<(), Error> {
-    read_request(&stream).await?;
-    println!("[debug] request processed");
-    stream.write(b"HTTP/1.1 200 OK\r\nContent-Legnth: 0\r\n\r\n").await?;
+    let headers = read_headers(&stream).await?;
+    println!("[debug] request processed: {:?}", headers);
+    stream
+        .write(b"HTTP/1.1 200 OK\r\nContent-Legnth: 0\r\n\r\n")
+        .await?;
     stream.flush().await
 }
 
@@ -81,16 +85,19 @@ pub async fn run(addr: String, creds: GoogleCredentials) -> Result<(), Box<dyn s
     let (sender, receiver) = channel::<String>();
     let broker = task::spawn(broker_loop(receiver));
 
-    println!("[debug] listener bound, entering stream processing: {:?}", creds);
+    println!(
+        "[debug] listener bound, entering stream processing: {:?}",
+        creds
+    );
 
     while let Some(stream) = incoming.next().await {
         match stream {
             Ok(connection) => {
                 task::spawn(handle(connection));
-            },
+            }
             Err(e) => {
                 println!("[warning] invalid connection: {:?}", e);
-                continue
+                continue;
             }
         }
     }
@@ -100,4 +107,3 @@ pub async fn run(addr: String, creds: GoogleCredentials) -> Result<(), Box<dyn s
 
     Ok(())
 }
-
