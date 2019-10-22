@@ -8,6 +8,7 @@ use async_std::prelude::*;
 use async_std::task;
 use google::GoogleCredentials;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
+use http::Method;
 use std::io::{Error, ErrorKind};
 use std::sync::mpsc::{channel, Receiver};
 
@@ -27,9 +28,23 @@ fn parse_header_line(line: String) -> Result<(HeaderName, HeaderValue), Error> {
   }
 }
 
+fn parse_method(raw_value: &str) -> Result<Method, Error> {
+  Method::from_bytes(raw_value.as_bytes()).map_err(|_e| Error::from(ErrorKind::InvalidData))
+}
+
+fn parse_request_line(line: String) -> Result<(Method, String), Error> {
+  let mut bytes = line.split_whitespace();
+  match (bytes.next(), bytes.next()) {
+    (Some(left), Some(right)) => Ok((parse_method(left)?, String::from(right))),
+    _ => Err(Error::from(ErrorKind::InvalidData)),
+  }
+}
+
 #[derive(Debug)]
 struct RequestHead {
   headers: HeaderMap,
+  method: Method,
+  path: String,
 }
 
 async fn read_headers<T>(reader: T) -> Result<RequestHead, Error>
@@ -65,7 +80,12 @@ where
     }
   }
 
-  Ok(RequestHead { headers: map })
+  let (method, path) = parse_request_line(request_line)?;
+  Ok(RequestHead {
+    headers: map,
+    method,
+    path,
+  })
 }
 
 async fn handle(mut stream: TcpStream) -> Result<(), Error> {
