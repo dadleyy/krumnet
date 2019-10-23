@@ -1,4 +1,6 @@
 extern crate async_std;
+extern crate chrono;
+extern crate chrono_tz;
 extern crate http;
 extern crate url;
 
@@ -9,10 +11,11 @@ use async_std::io::BufReader;
 use async_std::net::{TcpListener, TcpStream};
 use async_std::prelude::*;
 use async_std::task;
+use chrono::prelude::*;
 use configuration::Configuration;
 use constants::GOOGLE_AUTH_URL;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
-use http::{Method, Uri};
+use http::{Method, Response, StatusCode, Uri};
 use std::io::{Error, ErrorKind};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
@@ -102,19 +105,76 @@ where
   })
 }
 
-async fn not_found<T>(mut writer: T) -> Result<(), Error>
+async fn write_response<T, U>(mut writer: T, response: Response<U>) -> Result<(), Error>
 where
   T: async_std::io::Write + std::marker::Unpin,
 {
+  let (bits, _) = response.into_parts();
+  let bytes = format!(
+    "HTTP/1.0 {} {}\r\n",
+    bits.status.as_str(),
+    bits.status.canonical_reason().unwrap_or_default(),
+  );
+
   writer
-    .write(
-      b"HTTP/1.0 404 Not Found\r\nContent-Length: 9\r\nContent-Type: text/plain\r\n\r\nnot found",
-    )
-    .await?;
+    .write(bytes.as_bytes())
+    .await
+    .map_err(|_| Error::from(ErrorKind::Other))?;
+
+  let headers = bits
+    .headers
+    .iter()
+    .map(|(key, value)| value.to_str().map(|v| format!("{}: {}", key, v)))
+    .flatten()
+    .collect::<Vec<String>>()
+    .join("\r\n");
+
+  let out = format!("{}\r\n", headers);
+
+  writer
+    .write(out.as_bytes())
+    .await
+    .map_err(|_| Error::from(ErrorKind::Other))?;
+
   Ok(())
 }
 
-async fn authenticate<T>(mut writer: T, config: &Configuration) -> Result<(), Error>
+async fn not_found<T>(writer: T) -> Result<(), Error>
+where
+  T: async_std::io::Write + std::marker::Unpin,
+{
+  let mut out = Response::builder();
+  out.status(StatusCode::NOT_FOUND);
+
+  match HeaderValue::from_str(
+    format!(
+      "{}",
+      Utc::now()
+        .with_timezone(&chrono_tz::GMT)
+        .format("%a, %e %b %Y %H:%M:%S GMT")
+        .to_string()
+    )
+    .as_str(),
+  ) {
+    Ok(value) => {
+      println!("[debug] adding date header to not found: {:?}", value);
+      out.header(http::header::DATE, value);
+    }
+    Err(e) => {
+      println!("[error] unable to parse date header: {:?}", e);
+    }
+  }
+
+  match out.body(()) {
+    Ok(response) => write_response(writer, response).await,
+    Err(e) => {
+      println!("[warning] problem building response {:?}", e);
+      return Err(Error::from(ErrorKind::NotFound));
+    }
+  }
+}
+
+async fn authenticate<T>(mut writer: T) -> Result<(), Error>
 where
   T: async_std::io::Write + std::marker::Unpin,
 {
@@ -172,7 +232,7 @@ where
 
   match (headers.method, headers.uri.path()) {
     (Method::GET, "/auth/redirect") => login(&mut stream, config.as_ref()).await?,
-    (Method::GET, "/auth/callback") => authenticate(&mut stream, config.as_ref()).await?,
+    (Method::GET, "/auth/callback") => authenticate(&mut stream).await?,
     _ => {
       println!("[debug] 404 for {:?}", headers.uri);
       not_found(&mut stream).await?;
