@@ -58,7 +58,7 @@ fn parse_request_line(line: String) -> Result<(Method, Uri), Error> {
 struct RequestHead {
   headers: HeaderMap,
   method: Method,
-  path: Uri,
+  uri: Uri,
 }
 
 async fn read_headers<T>(reader: T) -> Result<RequestHead, Error>
@@ -94,11 +94,11 @@ where
     }
   }
 
-  let (method, path) = parse_request_line(request_line)?;
+  let (method, uri) = parse_request_line(request_line)?;
   Ok(RequestHead {
     headers: map,
     method,
-    path,
+    uri,
   })
 }
 
@@ -170,11 +170,11 @@ where
   };
   println!("[debug] request processed: {:?}", headers);
 
-  match (headers.method, headers.path.path()) {
+  match (headers.method, headers.uri.path()) {
     (Method::GET, "/auth/redirect") => login(&mut stream, config.as_ref()).await?,
     (Method::GET, "/auth/callback") => authenticate(&mut stream, config.as_ref()).await?,
     _ => {
-      println!("[debug] 404 for {:?}", headers.path);
+      println!("[debug] 404 for {:?}", headers.uri);
       not_found(&mut stream).await?;
     }
   }
