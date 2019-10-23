@@ -13,8 +13,11 @@ name = "krumnet"
 path = "src/bin/main.rs"
 
 [dependencies]
-async-std = "0.99.10"
-http = "0.1.19"
-url = "2.1.0"
-chrono = "0.4.9"
-chrono-tz = "0.5"
+async-std = "^0.99"
+http = "^0.1"
+url = "^2.1"
+chrono = "^0.4"
+chrono-tz = "^0.5"
+gumdrop = "^0.7"
+serde_json = "^1.0"
+serde = { version = "^1.0", features = ["derive"] }

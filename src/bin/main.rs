@@ -1,36 +1,32 @@
 extern crate async_std;
+extern crate gumdrop;
+
+use gumdrop::{parse_args_default_or_exit, Options as Gumdrop};
 
 use async_std::task;
-use krumnet::configuration::{Configuration, GoogleCredentials};
+use krumnet::configuration::Configuration;
 use krumnet::run;
-use std::env::{args, var_os};
+
+#[derive(Debug, Gumdrop)]
+struct Options {
+  #[options(help = "configuration toml file")]
+  config: Configuration,
+
+  #[options(help = "display the help text")]
+  help: bool,
+}
 
 fn main() {
-  let client_id = var_os("GOOGLE_CLIENT_ID")
-    .unwrap_or_default()
-    .into_string()
-    .unwrap_or_default();
-  let client_secret = var_os("GOOGLE_CLIENT_SECRET")
-    .unwrap_or_default()
-    .into_string()
-    .unwrap_or_default();
-  let redirect_uri = var_os("GOOGLE_CLIENT_REDIRECT_URI")
-    .unwrap_or_default()
-    .into_string()
-    .unwrap_or_default();
+  let opts = parse_args_default_or_exit::<Options>();
 
-  let config = Configuration {
-    google: GoogleCredentials::new(client_id, client_secret, redirect_uri),
-  };
+  if opts.help {
+    println!("{}", Options::usage());
+    return;
+  }
 
-  let addr = args()
-    .skip(1)
-    .nth(0)
-    .unwrap_or(String::from("0.0.0.0:8080"));
+  println!("[debug] starting server '{:?}'", opts.config.addr);
 
-  println!("[debug] starting server '{}'", addr);
-
-  if let Err(e) = task::block_on(run(addr, config)) {
+  if let Err(e) = task::block_on(run(opts.config)) {
     println!("[error] exiting with error: {:?}", e);
   }
 }

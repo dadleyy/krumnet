@@ -42,7 +42,6 @@ fn parse_method(raw_value: &str) -> Result<Method, Error> {
 }
 
 fn parse_request_path(raw_value: &str) -> Result<Uri, Error> {
-  println!("[debug] parsing request path: {}", raw_value);
   http::Uri::builder()
     .path_and_query(raw_value)
     .build()
@@ -75,8 +74,6 @@ where
     .next()
     .await
     .ok_or(Error::from(ErrorKind::InvalidData))??;
-
-  println!("[debug] starting header parse for {:?}", request_line);
 
   loop {
     match reader.next().await {
@@ -139,14 +136,8 @@ where
   Ok(())
 }
 
-async fn not_found<T>(writer: T) -> Result<(), Error>
-where
-  T: async_std::io::Write + std::marker::Unpin,
-{
-  let mut out = Response::builder();
-  out.status(StatusCode::NOT_FOUND);
-
-  match HeaderValue::from_str(
+fn date() -> Result<HeaderValue, Error> {
+  HeaderValue::from_str(
     format!(
       "{}",
       Utc::now()
@@ -155,14 +146,19 @@ where
         .to_string()
     )
     .as_str(),
-  ) {
-    Ok(value) => {
-      println!("[debug] adding date header to not found: {:?}", value);
-      out.header(http::header::DATE, value);
-    }
-    Err(e) => {
-      println!("[error] unable to parse date header: {:?}", e);
-    }
+  )
+  .or(Err(Error::from(ErrorKind::InvalidData)))
+}
+
+async fn not_found<T>(writer: T) -> Result<(), Error>
+where
+  T: async_std::io::Write + std::marker::Unpin,
+{
+  let mut out = Response::builder();
+  out.status(StatusCode::NOT_FOUND);
+
+  if let Ok(value) = date() {
+    out.header(http::header::DATE, value);
   }
 
   match out.body(()) {
@@ -174,10 +170,11 @@ where
   }
 }
 
-async fn authenticate<T>(mut writer: T) -> Result<(), Error>
+async fn authenticate<T>(mut writer: T, uri: Uri) -> Result<(), Error>
 where
   T: async_std::io::Write + std::marker::Unpin,
 {
+  println!("[debug] auth callback w/ code: {:?}", uri);
   writer
     .write(b"HTTP/1.0 200 Ok\r\nContent-Length: 2\r\nContent-Type: text/plain\r\n\r\nok")
     .await?;
@@ -188,6 +185,8 @@ async fn login<T>(mut writer: T, config: &Configuration) -> Result<(), Error>
 where
   T: async_std::io::Write + std::marker::Unpin,
 {
+  println!("[debug] login attempt, building redir");
+
   let mut location = Url::parse(GOOGLE_AUTH_URL).map_err(|_| Error::from(ErrorKind::Other))?;
   location
     .query_pairs_mut()
@@ -228,16 +227,16 @@ where
       return Err(e);
     }
   };
-  println!("[debug] request processed: {:?}", headers);
 
   match (headers.method, headers.uri.path()) {
     (Method::GET, "/auth/redirect") => login(&mut stream, config.as_ref()).await?,
-    (Method::GET, "/auth/callback") => authenticate(&mut stream).await?,
+    (Method::GET, "/auth/callback") => authenticate(&mut stream, headers.uri).await?,
     _ => {
       println!("[debug] 404 for {:?}", headers.uri);
       not_found(&mut stream).await?;
     }
   }
+
   stream.flush().await
 }
 
@@ -249,11 +248,8 @@ async fn broker_loop(chan: Receiver<String>) {
   }
 }
 
-pub async fn run(
-  addr: String,
-  configuration: Configuration,
-) -> Result<(), Box<dyn std::error::Error>> {
-  let listener = TcpListener::bind(addr).await?;
+pub async fn run(configuration: Configuration) -> Result<(), Box<dyn std::error::Error>> {
+  let listener = TcpListener::bind(&configuration.addr).await?;
   let mut incoming = listener.incoming();
   let (sender, receiver) = channel::<String>();
   let broker = task::spawn(broker_loop(receiver));
