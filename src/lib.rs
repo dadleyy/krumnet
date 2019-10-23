@@ -12,7 +12,7 @@ use async_std::task;
 use configuration::Configuration;
 use constants::GOOGLE_AUTH_URL;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
-use http::Method;
+use http::{Method, Uri};
 use std::io::{Error, ErrorKind};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
@@ -38,10 +38,18 @@ fn parse_method(raw_value: &str) -> Result<Method, Error> {
   Method::from_bytes(raw_value.as_bytes()).map_err(|_e| Error::from(ErrorKind::InvalidData))
 }
 
-fn parse_request_line(line: String) -> Result<(Method, String), Error> {
+fn parse_request_path(raw_value: &str) -> Result<Uri, Error> {
+  println!("[debug] parsing request path: {}", raw_value);
+  http::Uri::builder()
+    .path_and_query(raw_value)
+    .build()
+    .map_err(|_| Error::from(ErrorKind::AddrNotAvailable))
+}
+
+fn parse_request_line(line: String) -> Result<(Method, Uri), Error> {
   let mut bytes = line.split_whitespace();
   match (bytes.next(), bytes.next()) {
-    (Some(left), Some(right)) => Ok((parse_method(left)?, String::from(right))),
+    (Some(left), Some(right)) => Ok((parse_method(left)?, parse_request_path(right)?)),
     _ => Err(Error::from(ErrorKind::InvalidData)),
   }
 }
@@ -50,7 +58,7 @@ fn parse_request_line(line: String) -> Result<(Method, String), Error> {
 struct RequestHead {
   headers: HeaderMap,
   method: Method,
-  path: String,
+  path: Uri,
 }
 
 async fn read_headers<T>(reader: T) -> Result<RequestHead, Error>
@@ -99,7 +107,19 @@ where
   T: async_std::io::Write + std::marker::Unpin,
 {
   writer
-    .write(b"HTTP/1.0 404 Not Found\r\nContent-Legnth: 16\r\n\r\n<p>not found</p>")
+    .write(
+      b"HTTP/1.0 404 Not Found\r\nContent-Length: 9\r\nContent-Type: text/plain\r\n\r\nnot found",
+    )
+    .await?;
+  Ok(())
+}
+
+async fn authenticate<T>(mut writer: T, config: &Configuration) -> Result<(), Error>
+where
+  T: async_std::io::Write + std::marker::Unpin,
+{
+  writer
+    .write(b"HTTP/1.0 200 Ok\r\nContent-Length: 2\r\nContent-Type: text/plain\r\n\r\nok")
     .await?;
   Ok(())
 }
@@ -129,7 +149,7 @@ where
       constants::GOOGLE_AUTH_SCOPE_VALUE,
     );
   let response = format!(
-    "HTTP/1.0 302 Found\r\nContent-Legnth: 0\r\nLocation: {}\r\n\r\n",
+    "HTTP/1.0 302 Found\r\nContent-Length: 0\r\nLocation: {}\r\n\r\n",
     location.as_str()
   );
 
@@ -141,11 +161,18 @@ async fn handle<T>(mut stream: TcpStream, config: T) -> Result<(), Error>
 where
   T: std::convert::AsRef<Configuration>,
 {
-  let headers = read_headers(&stream).await?;
+  let headers = match read_headers(&stream).await {
+    Ok(v) => v,
+    Err(e) => {
+      println!("[warning] unable to parse headers: {:?}", e);
+      return Err(e);
+    }
+  };
   println!("[debug] request processed: {:?}", headers);
 
-  match (headers.method, headers.path.as_str()) {
+  match (headers.method, headers.path.path()) {
     (Method::GET, "/auth/redirect") => login(&mut stream, config.as_ref()).await?,
+    (Method::GET, "/auth/callback") => authenticate(&mut stream, config.as_ref()).await?,
     _ => {
       println!("[debug] 404 for {:?}", headers.path);
       not_found(&mut stream).await?;
