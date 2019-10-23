@@ -19,7 +19,7 @@ use http::{Method, Response, StatusCode, Uri};
 use std::io::{Error, ErrorKind};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
-use url::Url;
+use url::{form_urlencoded, Url};
 
 fn parse_header_name(raw_value: &str) -> Result<HeaderName, Error> {
   HeaderName::from_bytes(raw_value.as_bytes()).map_err(|_e| Error::from(ErrorKind::InvalidData))
@@ -174,10 +174,18 @@ async fn authenticate<T>(mut writer: T, uri: Uri) -> Result<(), Error>
 where
   T: async_std::io::Write + std::marker::Unpin,
 {
-  println!("[debug] auth callback w/ code: {:?}", uri);
+  let code = match form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
+    .find(|(key, _)| key == "code")
+  {
+    Some((_, code)) => code,
+    None => return not_found(writer).await,
+  };
+
+  println!("[debug] auth callback w/ code: {:?}", code);
   writer
     .write(b"HTTP/1.0 200 Ok\r\nContent-Length: 2\r\nContent-Type: text/plain\r\n\r\nok")
     .await?;
+
   Ok(())
 }
 
