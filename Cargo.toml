@@ -20,7 +20,7 @@ chrono = "^0.4"
 chrono-tz = "^0.5"
 gumdrop = "^0.7"
 serde_json = "^1.0"
-# reqwest = "^0.9.0"
+isahc = "^0.7.4"
 
 [dependencies.serde]
 version = "^1.0"

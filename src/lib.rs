@@ -2,6 +2,7 @@ extern crate async_std;
 extern crate chrono;
 extern crate chrono_tz;
 extern crate http;
+extern crate isahc;
 extern crate url;
 
 pub mod configuration;
@@ -151,24 +152,22 @@ fn date() -> Result<HeaderValue, Error> {
 }
 
 async fn exchange_code(code: &str, config: &Configuration) -> Result<(), Error> {
-  /*
-  let client = reqwest::Client::new();
-  let response = client
-    .post(constants::GOOGLE_TOKEN_URL)
-    .form(&[
-      ("code", code),
-      ("client_id", config.google.client_id.as_str()),
-      ("client_secret", config.google.client_secret.as_str()),
-      ("redirect_uri", config.google.redirect_uri.as_str()),
-      ("grant_type", "authorization_code"),
-    ])
-    .send();
+  let client = match isahc::HttpClient::new() {
+    Err(e) => return Err(Error::from(ErrorKind::Other)),
+    Ok(c) => c,
+  };
 
-  match response {
-    Ok(result) => println!("[debug] finished exchange: {:?}", result),
-    Err(e) => println!("[warning] failed exchange: {:?}", e),
+  let encoded: String = form_urlencoded::Serializer::new(String::new())
+    .append_pair("code", code)
+    .append_pair("client_id", &config.google.client_id)
+    .append_pair("client_secret", &config.google.client_secret)
+    .append_pair("redirect_uri", &config.google.redirect_uri)
+    .append_pair("grant_type", "authorization_code")
+    .finish();
+
+  if let Ok(response) = client.post(constants::GOOGLE_TOKEN_URL, encoded) {
+    println!("[debug] successful response {:?}", response);
   }
-    */
 
   Ok(())
 }
