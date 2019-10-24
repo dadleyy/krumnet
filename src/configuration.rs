@@ -12,14 +12,19 @@ pub struct Configuration {
   pub google: GoogleCredentials,
 
   #[serde(default)]
+  pub krumi: KrumiConfiguration,
+
+  #[serde(default)]
   pub addr: String,
 }
 
 impl Default for Configuration {
   fn default() -> Self {
     let google = GoogleCredentials::default();
+    let krumi = KrumiConfiguration::default();
     Configuration {
       google,
+      krumi,
       addr: String::from("0.0.0.0:8080"),
     }
   }
@@ -82,4 +87,10 @@ impl GoogleCredentials {
       redirect_uri,
     }
   }
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct KrumiConfiguration {
+  #[serde(default)]
+  pub auth_uri: String,
 }

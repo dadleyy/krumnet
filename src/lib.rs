@@ -150,6 +150,51 @@ fn date() -> Result<HeaderValue, Error> {
   .or(Err(Error::from(ErrorKind::InvalidData)))
 }
 
+async fn exchange_code(code: &str, config: &Configuration) -> Result<(), Error> {
+  /*
+  let client = reqwest::Client::new();
+  let response = client
+    .post(constants::GOOGLE_TOKEN_URL)
+    .form(&[
+      ("code", code),
+      ("client_id", config.google.client_id.as_str()),
+      ("client_secret", config.google.client_secret.as_str()),
+      ("redirect_uri", config.google.redirect_uri.as_str()),
+      ("grant_type", "authorization_code"),
+    ])
+    .send();
+
+  match response {
+    Ok(result) => println!("[debug] finished exchange: {:?}", result),
+    Err(e) => println!("[warning] failed exchange: {:?}", e),
+  }
+    */
+
+  Ok(())
+}
+
+async fn send_redirect<T>(writer: T, location: &str) -> Result<(), Error>
+where
+  T: async_std::io::Write + std::marker::Unpin,
+{
+  let mut out = Response::builder();
+  out
+    .status(StatusCode::FOUND)
+    .header(http::header::LOCATION, location);
+
+  if let Ok(value) = date() {
+    out.header(http::header::DATE, value);
+  }
+
+  match out.body(()) {
+    Ok(response) => write_response(writer, response).await,
+    Err(e) => {
+      println!("[warning] problem building response {:?}", e);
+      return Err(Error::from(ErrorKind::NotFound));
+    }
+  }
+}
+
 async fn not_found<T>(writer: T) -> Result<(), Error>
 where
   T: async_std::io::Write + std::marker::Unpin,
@@ -170,7 +215,7 @@ where
   }
 }
 
-async fn authenticate<T>(mut writer: T, uri: Uri) -> Result<(), Error>
+async fn authenticate<T>(writer: T, uri: Uri, config: &Configuration) -> Result<(), Error>
 where
   T: async_std::io::Write + std::marker::Unpin,
 {
@@ -181,15 +226,12 @@ where
     None => return not_found(writer).await,
   };
 
-  println!("[debug] auth callback w/ code: {:?}", code);
-  writer
-    .write(b"HTTP/1.0 200 Ok\r\nContent-Length: 2\r\nContent-Type: text/plain\r\n\r\nok")
-    .await?;
+  exchange_code(&code, config).await;
 
-  Ok(())
+  send_redirect(writer, config.krumi.auth_uri.as_str()).await
 }
 
-async fn login<T>(mut writer: T, config: &Configuration) -> Result<(), Error>
+async fn login<T>(writer: T, config: &Configuration) -> Result<(), Error>
 where
   T: async_std::io::Write + std::marker::Unpin,
 {
@@ -215,13 +257,8 @@ where
       constants::GOOGLE_AUTH_SCOPE_KEY,
       constants::GOOGLE_AUTH_SCOPE_VALUE,
     );
-  let response = format!(
-    "HTTP/1.0 302 Found\r\nContent-Length: 0\r\nLocation: {}\r\n\r\n",
-    location.as_str()
-  );
 
-  writer.write(response.as_bytes()).await?;
-  Ok(())
+  send_redirect(writer, location.as_str()).await
 }
 
 async fn handle<T>(mut stream: TcpStream, config: T) -> Result<(), Error>
@@ -238,7 +275,9 @@ where
 
   match (headers.method, headers.uri.path()) {
     (Method::GET, "/auth/redirect") => login(&mut stream, config.as_ref()).await?,
-    (Method::GET, "/auth/callback") => authenticate(&mut stream, headers.uri).await?,
+    (Method::GET, "/auth/callback") => {
+      authenticate(&mut stream, headers.uri, config.as_ref()).await?
+    }
     _ => {
       println!("[debug] 404 for {:?}", headers.uri);
       not_found(&mut stream).await?;

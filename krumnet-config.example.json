@@ -1,5 +1,11 @@
 {
-  "addr": "0.0.0.0:80808",
+  "addr": "0.0.0.0:8080",
+  "krumi": {
+    "auth_uri": "http://0.0.0.0:4201/auth/callback"
+  },
   "google": {
+    "client_id": "...",
+    "client_secret": "...",
+    "redirect_uri": "http://0.0.0.0:8080/auth/callback"
   }
 }
