@@ -408,7 +408,8 @@ where
     }
   }
 
-  stream.flush().await
+  // stream.flush().await
+  Ok(())
 }
 
 async fn broker_loop(chan: Receiver<String>) {
