@@ -18,7 +18,7 @@ use async_std::task;
 use chrono::prelude::*;
 use configuration::Configuration;
 use constants::GOOGLE_AUTH_URL;
-use http::header::{HeaderMap, HeaderName, HeaderValue};
+use http::header::{self, HeaderMap, HeaderName, HeaderValue};
 use http::status::StatusCode;
 use http::{Method, Request, Response, Uri};
 use serde::Deserialize;
@@ -114,7 +114,7 @@ where
 {
   let (bits, _) = response.into_parts();
   let bytes = format!(
-    "HTTP/1.0 {} {}\r\n",
+    "HTTP/1.1 {} {}\r\n",
     bits.status.as_str(),
     bits.status.canonical_reason().unwrap_or_default(),
   );
@@ -124,15 +124,24 @@ where
     .await
     .map_err(|_| Error::from(ErrorKind::Other))?;
 
-  let headers = bits
-    .headers
+  let mut headers = bits.headers;
+  headers.insert(
+    header::CONNECTION,
+    HeaderValue::from_str("close").map_err(|e| Error::new(ErrorKind::Other, format!("{}", e)))?,
+  );
+
+  if let Ok(value) = date() {
+    headers.insert(header::DATE, value);
+  }
+
+  let head = headers
     .iter()
     .map(|(key, value)| value.to_str().map(|v| format!("{}: {}", key, v)))
     .flatten()
     .collect::<Vec<String>>()
     .join("\r\n");
 
-  let out = format!("{}\r\n", headers);
+  let out = format!("{}\r\n", head);
 
   writer
     .write(out.as_bytes())
@@ -247,10 +256,6 @@ where
     .status(StatusCode::FOUND)
     .header(http::header::LOCATION, location);
 
-  if let Ok(value) = date() {
-    out.header(http::header::DATE, value);
-  }
-
   match out.body(()) {
     Ok(response) => write_response(writer, response).await,
     Err(e) => {
@@ -267,10 +272,6 @@ where
   let mut out = Response::builder();
   out.status(StatusCode::BAD_REQUEST);
 
-  if let Ok(value) = date() {
-    out.header(http::header::DATE, value);
-  }
-
   match out.body(()) {
     Ok(response) => write_response(writer, response).await,
     Err(e) => {
@@ -286,10 +287,6 @@ where
 {
   let mut out = Response::builder();
   out.status(StatusCode::NOT_FOUND);
-
-  if let Ok(value) = date() {
-    out.header(http::header::DATE, value);
-  }
 
   match out.body(()) {
     Ok(response) => write_response(writer, response).await,
