@@ -408,8 +408,7 @@ where
     }
   }
 
-  // stream.flush().await
-  Ok(())
+  stream.flush().await
 }
 
 async fn broker_loop(chan: Receiver<String>) {
@@ -430,6 +429,10 @@ pub async fn run(configuration: Configuration) -> Result<(), Box<dyn std::error:
   while let Some(stream) = incoming.next().await {
     match stream {
       Ok(connection) => {
+        println!(
+          "[debug] connection received w/ nodelay[{:?}]",
+          connection.nodelay()
+        );
         let local_config = shared_config.clone();
         task::spawn(handle(connection, local_config));
       }
