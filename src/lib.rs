@@ -154,7 +154,7 @@ where
     .await
     .map_err(|_| Error::from(ErrorKind::Other))?;
 
-  Ok(())
+  writer.flush().await
 }
 
 fn date() -> Result<HeaderValue, Error> {
