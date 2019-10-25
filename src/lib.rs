@@ -440,7 +440,6 @@ pub async fn run(configuration: Configuration) -> Result<(), Box<dyn std::error:
           "[debug] connection received w/ nodelay[{:?}]",
           connection.nodelay()
         );
-        connection.set_nodelay(true);
         let local_config = shared_config.clone();
         task::spawn(handle(connection, local_config));
       }
