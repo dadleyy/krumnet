@@ -134,6 +134,12 @@ where
     headers.insert(header::DATE, value);
   }
 
+  if headers.get(header::CONTENT_LENGTH).is_none() {
+    let value =
+      HeaderValue::from_str("0").map_err(|e| Error::new(ErrorKind::Other, format!("{}", e)))?;
+    headers.insert(header::CONTENT_LENGTH, value);
+  }
+
   let head = headers
     .iter()
     .map(|(key, value)| value.to_str().map(|v| format!("{}: {}", key, v)))
