@@ -93,4 +93,12 @@ impl GoogleCredentials {
 pub struct KrumiConfiguration {
   #[serde(default)]
   pub auth_uri: String,
+
+  #[serde(default)]
+  pub session_store: SessionStoreConfiguration,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct SessionStoreConfiguration {
+  pub redis_uri: String,
 }

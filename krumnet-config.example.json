@@ -1,7 +1,10 @@
 {
   "addr": "0.0.0.0:8080",
   "krumi": {
-    "auth_uri": "http://0.0.0.0:4201/auth/callback"
+    "auth_uri": "http://0.0.0.0:4201/auth/callback",
+    "session_store": {
+      "redis_uri": "redis://0.0.0.0:6379"
+    }
   },
   "google": {
     "client_id": "...",

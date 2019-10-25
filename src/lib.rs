@@ -3,6 +3,7 @@ extern crate chrono;
 extern crate chrono_tz;
 extern crate http;
 extern crate isahc;
+extern crate redis;
 extern crate serde;
 extern crate serde_json;
 extern crate url;
@@ -186,8 +187,6 @@ async fn fetch_info(authorization: TokenExchangePayload) -> Result<UserInfoPaylo
     .uri(constants::GOOGLE_INFO_URL)
     .header("Authorization", bearer.as_str());
 
-  println!("[debug] sending bearer token: {:?}", bearer.as_str());
-
   match client.send(
     request
       .body(())
@@ -320,14 +319,33 @@ where
     }
   };
 
-  match fetch_info(authorization).await {
-    Ok(info) => {
-      println!("[debug] successfully loaded user info: {:?}", info);
-    }
-    Err(e) => {
-      println!("[warning] unable to load user info: {:?}", e);
-    }
-  }
+  let user_info = fetch_info(authorization).await.map_err(|e| {
+    Error::new(
+      ErrorKind::Other,
+      format!("unable to loader user info: {:?}", e),
+    )
+  })?;
+
+  let redis_client =
+    redis::Client::open(config.krumi.session_store.redis_uri.as_str()).map_err(|e| {
+      Error::new(
+        ErrorKind::Other,
+        format!("invalid redis configuration url: {}", e),
+      )
+    })?;
+
+  let mut con = redis_client.get_connection().map_err(|e| {
+    Error::new(
+      ErrorKind::Other,
+      format!("unable to open connection: {}", e),
+    )
+  })?;
+
+  redis::cmd("PING")
+    .query(&mut con)
+    .map_err(|e| Error::new(ErrorKind::Other, format!("unable to ping server: {}", e)))?;
+
+  println!("[debug] successully loaded and saved user: {:?}", user_info);
 
   send_redirect(writer, config.krumi.auth_uri.as_str()).await
 }
