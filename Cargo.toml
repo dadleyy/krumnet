@@ -27,3 +27,6 @@ redis = "^0.13"
 [dependencies.serde]
 version = "^1.0"
 features = ["derive"]
+
+[dev-dependencies]
+mockito = "^0.21"

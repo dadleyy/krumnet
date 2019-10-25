@@ -16,7 +16,7 @@ use async_std::net::{TcpListener, TcpStream};
 use async_std::prelude::*;
 use async_std::task;
 use chrono::prelude::*;
-use configuration::Configuration;
+use configuration::{Configuration, GoogleCredentials};
 use constants::GOOGLE_AUTH_URL;
 use http::header::{self, HeaderMap, HeaderName, HeaderValue};
 use http::status::StatusCode;
@@ -171,7 +171,7 @@ fn date() -> Result<HeaderValue, Error> {
   .or(Err(Error::from(ErrorKind::InvalidData)))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, PartialEq, Deserialize)]
 struct TokenExchangePayload {
   access_token: String,
 }
@@ -228,7 +228,12 @@ async fn exchange_code(code: &str, config: &Configuration) -> Result<TokenExchan
     .append_pair("grant_type", "authorization_code")
     .finish();
 
-  match client.post(constants::GOOGLE_TOKEN_URL, encoded) {
+  println!(
+    "[debug] sending token exchange payload to {:?}",
+    GoogleCredentials::token_url()
+  );
+
+  match client.post(GoogleCredentials::token_url(), encoded) {
     Ok(mut response) if response.status() == StatusCode::OK => {
       let body = response.body_mut();
       let payload = match serde_json::from_reader(body) {
@@ -456,4 +461,46 @@ pub async fn run(configuration: Configuration) -> Result<(), Box<dyn std::error:
   broker.await;
 
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use mockito::{mock, Matcher};
+
+  #[test]
+  fn test_token_exchange_success() {
+    let mocked = mock("POST", Matcher::Any)
+      .with_status(200)
+      .with_body(r#"{"access_token": "access-token"}"#)
+      .create();
+
+    let result = task::block_on(async {
+      let config = Configuration::default();
+      let code = "";
+      exchange_code(code, &config).await
+    });
+
+    assert_eq!(
+      result.unwrap(),
+      TokenExchangePayload {
+        access_token: String::from("access-token")
+      }
+    );
+    drop(mocked);
+  }
+
+  #[test]
+  fn test_token_exchange_fail() {
+    let mocked = mock("POST", Matcher::Any).with_status(400).create();
+
+    let result = task::block_on(async {
+      let config = Configuration::default();
+      let code = "";
+      exchange_code(code, &config).await
+    });
+
+    assert_eq!(result.is_err(), true);
+    drop(mocked);
+  }
 }

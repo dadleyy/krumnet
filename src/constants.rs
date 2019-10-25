@@ -1,6 +1,7 @@
 pub const GOOGLE_TOKEN_URL: &'static str = "https://www.googleapis.com/oauth2/v4/token";
 pub const GOOGLE_AUTH_URL: &'static str = "https://accounts.google.com/o/oauth2/v2/auth";
 pub const GOOGLE_INFO_URL: &'static str = "https://openidconnect.googleapis.com/v1/userinfo";
+
 pub const GOOGLE_AUTH_RESPONSE_TYPE_KEY: &'static str = "response_type";
 pub const GOOGLE_AUTH_RESPONSE_TYPE_VALUE: &'static str = "code";
 pub const GOOGLE_AUTH_CLIENT_ID_KEY: &'static str = "client_id";
