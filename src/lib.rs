@@ -329,6 +329,8 @@ where
     )
   })?;
 
+  println!("[debug] successully loaded user: {:?}", user_info);
+
   let redis_client =
     redis::Client::open(config.krumi.session_store.redis_uri.as_str()).map_err(|e| {
       Error::new(
@@ -348,7 +350,7 @@ where
     .query(&mut con)
     .map_err(|e| Error::new(ErrorKind::Other, format!("unable to ping server: {}", e)))?;
 
-  println!("[debug] successully loaded and saved user: {:?}", user_info);
+  println!("[debug] successully stored user: {:?}", user_info);
 
   send_redirect(writer, config.krumi.auth_uri.as_str()).await
 }
