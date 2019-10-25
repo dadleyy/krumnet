@@ -3,6 +3,8 @@ extern crate chrono;
 extern crate chrono_tz;
 extern crate http;
 extern crate isahc;
+extern crate serde;
+extern crate serde_json;
 extern crate url;
 
 pub mod configuration;
@@ -16,7 +18,9 @@ use chrono::prelude::*;
 use configuration::Configuration;
 use constants::GOOGLE_AUTH_URL;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
-use http::{Method, Response, StatusCode, Uri};
+use http::status::StatusCode;
+use http::{Method, Request, Response, Uri};
+use serde::Deserialize;
 use std::io::{Error, ErrorKind};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
@@ -151,11 +155,56 @@ fn date() -> Result<HeaderValue, Error> {
   .or(Err(Error::from(ErrorKind::InvalidData)))
 }
 
-async fn exchange_code(code: &str, config: &Configuration) -> Result<(), Error> {
-  let client = match isahc::HttpClient::new() {
-    Err(e) => return Err(Error::from(ErrorKind::Other)),
-    Ok(c) => c,
-  };
+#[derive(Debug, Deserialize)]
+struct TokenExchangePayload {
+  access_token: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct UserInfoPayload {
+  name: String,
+  sub: String,
+  email: String,
+  picture: String,
+}
+
+fn make_client() -> Result<isahc::HttpClient, Error> {
+  isahc::HttpClient::new().map_err(|e| {
+    Error::new(
+      ErrorKind::Other,
+      format!("unable to open http connection: {:?}", e),
+    )
+  })
+}
+
+async fn fetch_info(authorization: TokenExchangePayload) -> Result<UserInfoPayload, Error> {
+  let client = make_client()?;
+  let mut request = Request::builder();
+  let bearer = format!("Bearer {}", authorization.access_token);
+  request
+    .method(Method::GET)
+    .uri(constants::GOOGLE_INFO_URL)
+    .header("Authorization", bearer.as_str());
+
+  println!("[debug] sending bearer token: {:?}", bearer.as_str());
+
+  match client.send(
+    request
+      .body(())
+      .map_err(|e| Error::new(ErrorKind::Other, format!("{}", e)))?,
+  ) {
+    Ok(mut response) if response.status() == 200 => serde_json::from_reader(response.body_mut())
+      .map_err(|e| Error::new(ErrorKind::Other, format!("{}", e))),
+    Ok(response) => Err(Error::new(
+      ErrorKind::Other,
+      format!("bad response satus from google sso: {}", response.status()),
+    )),
+    Err(e) => Err(Error::new(ErrorKind::Other, format!("{}", e))),
+  }
+}
+
+async fn exchange_code(code: &str, config: &Configuration) -> Result<TokenExchangePayload, Error> {
+  let client = make_client()?;
 
   let encoded: String = form_urlencoded::Serializer::new(String::new())
     .append_pair("code", code)
@@ -165,11 +214,29 @@ async fn exchange_code(code: &str, config: &Configuration) -> Result<(), Error> 
     .append_pair("grant_type", "authorization_code")
     .finish();
 
-  if let Ok(response) = client.post(constants::GOOGLE_TOKEN_URL, encoded) {
-    println!("[debug] successful response {:?}", response);
+  match client.post(constants::GOOGLE_TOKEN_URL, encoded) {
+    Ok(mut response) if response.status() == StatusCode::OK => {
+      let body = response.body_mut();
+      let payload = match serde_json::from_reader(body) {
+        Ok(p) => p,
+        Err(e) => {
+          return Err(Error::new(
+            ErrorKind::Other,
+            format!("unable to parse response body: {:?}", e),
+          ));
+        }
+      };
+      Ok(payload)
+    }
+    Ok(response) => Err(Error::new(
+      ErrorKind::Other,
+      format!("bad response from google sso: {:?}", response.status()),
+    )),
+    Err(e) => Err(Error::new(
+      ErrorKind::Other,
+      format!("unable to send code to google sso: {:?}", e),
+    )),
   }
-
-  Ok(())
 }
 
 async fn send_redirect<T>(writer: T, location: &str) -> Result<(), Error>
@@ -180,6 +247,26 @@ where
   out
     .status(StatusCode::FOUND)
     .header(http::header::LOCATION, location);
+
+  if let Ok(value) = date() {
+    out.header(http::header::DATE, value);
+  }
+
+  match out.body(()) {
+    Ok(response) => write_response(writer, response).await,
+    Err(e) => {
+      println!("[warning] problem building response {:?}", e);
+      return Err(Error::from(ErrorKind::NotFound));
+    }
+  }
+}
+
+async fn bad_request<T>(writer: T) -> Result<(), Error>
+where
+  T: async_std::io::Write + std::marker::Unpin,
+{
+  let mut out = Response::builder();
+  out.status(StatusCode::BAD_REQUEST);
 
   if let Ok(value) = date() {
     out.header(http::header::DATE, value);
@@ -225,9 +312,31 @@ where
     None => return not_found(writer).await,
   };
 
-  exchange_code(&code, config).await;
+  let authorization = match exchange_code(&code, config).await {
+    Ok(token) => token,
+    Err(e) => {
+      println!("[warning] unable to exchange code: {:?}", e);
+      return bad_request(writer).await;
+    }
+  };
+
+  match fetch_info(authorization).await {
+    Ok(info) => {
+      println!("[debug] successfully loaded user info: {:?}", info);
+    }
+    Err(e) => {
+      println!("[warning] unable to load user info: {:?}", e);
+    }
+  }
 
   send_redirect(writer, config.krumi.auth_uri.as_str()).await
+}
+
+async fn identify<T>(writer: T) -> Result<(), Error>
+where
+  T: async_std::io::Write + std::marker::Unpin,
+{
+  not_found(writer).await
 }
 
 async fn login<T>(writer: T, config: &Configuration) -> Result<(), Error>
@@ -277,6 +386,7 @@ where
     (Method::GET, "/auth/callback") => {
       authenticate(&mut stream, headers.uri, config.as_ref()).await?
     }
+    (Method::GET, "/auth/identify") => identify(&stream).await?,
     _ => {
       println!("[debug] 404 for {:?}", headers.uri);
       not_found(&mut stream).await?;
