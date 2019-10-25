@@ -147,7 +147,7 @@ where
     .collect::<Vec<String>>()
     .join("\r\n");
 
-  let out = format!("{}\r\n", head);
+  let out = format!("{}\r\n\r\n", head);
 
   writer
     .write(out.as_bytes())
