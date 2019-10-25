@@ -16,8 +16,7 @@ use async_std::net::{TcpListener, TcpStream};
 use async_std::prelude::*;
 use async_std::task;
 use chrono::prelude::*;
-use configuration::{Configuration, GoogleCredentials};
-use constants::GOOGLE_AUTH_URL;
+use configuration::Configuration;
 use http::header::{self, HeaderMap, HeaderName, HeaderValue};
 use http::status::StatusCode;
 use http::{Method, Request, Response, Uri};
@@ -199,7 +198,7 @@ async fn fetch_info(authorization: TokenExchangePayload) -> Result<UserInfoPaylo
   let bearer = format!("Bearer {}", authorization.access_token);
   request
     .method(Method::GET)
-    .uri(constants::GOOGLE_INFO_URL)
+    .uri(constants::google_info_url())
     .header("Authorization", bearer.as_str());
 
   match client.send(
@@ -228,12 +227,7 @@ async fn exchange_code(code: &str, config: &Configuration) -> Result<TokenExchan
     .append_pair("grant_type", "authorization_code")
     .finish();
 
-  println!(
-    "[debug] sending token exchange payload to {:?}",
-    GoogleCredentials::token_url()
-  );
-
-  match client.post(GoogleCredentials::token_url(), encoded) {
+  match client.post(constants::google_token_url(), encoded) {
     Ok(mut response) if response.status() == StatusCode::OK => {
       let body = response.body_mut();
       let payload = match serde_json::from_reader(body) {
@@ -358,9 +352,11 @@ async fn identify() -> Result<Response<()>, Error> {
 }
 
 async fn login(config: &Configuration) -> Result<Response<()>, Error> {
+  let mut location =
+    Url::parse(constants::google_auth_url().as_str()).map_err(|_| Error::from(ErrorKind::Other))?;
+
   println!("[debug] login attempt, building redir");
 
-  let mut location = Url::parse(GOOGLE_AUTH_URL).map_err(|_| Error::from(ErrorKind::Other))?;
   location
     .query_pairs_mut()
     .clear()

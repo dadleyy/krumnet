@@ -8,3 +8,30 @@ pub const GOOGLE_AUTH_CLIENT_ID_KEY: &'static str = "client_id";
 pub const GOOGLE_AUTH_REDIRECT_URI_KEY: &'static str = "redirect_uri";
 pub const GOOGLE_AUTH_SCOPE_KEY: &'static str = "scope";
 pub const GOOGLE_AUTH_SCOPE_VALUE: &'static str = "email profile";
+
+#[cfg(not(test))]
+pub fn google_info_url() -> String {
+  String::from(GOOGLE_INFO_URL)
+}
+#[cfg(test)]
+pub fn google_info_url() -> String {
+  String::from(&mockito::server_url())
+}
+
+#[cfg(not(test))]
+pub fn google_auth_url() -> String {
+  String::from(GOOGLE_AUTH_URL)
+}
+#[cfg(test)]
+pub fn google_auth_url() -> String {
+  String::from(&mockito::server_url())
+}
+
+#[cfg(not(test))]
+pub fn google_token_url() -> String {
+  String::from(GOOGLE_TOKEN_URL)
+}
+#[cfg(test)]
+pub fn google_token_url() -> String {
+  String::from(&mockito::server_url())
+}

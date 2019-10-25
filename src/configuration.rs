@@ -1,7 +1,5 @@
 extern crate serde;
 
-#[cfg(not(test))]
-use crate::constants::{GOOGLE_AUTH_URL, GOOGLE_INFO_URL, GOOGLE_TOKEN_URL};
 use serde::Deserialize;
 use std::env::var_os;
 use std::fs::read;
@@ -60,35 +58,6 @@ pub struct GoogleCredentials {
 
   #[serde(default)]
   pub redirect_uri: String,
-}
-
-impl GoogleCredentials {
-  #[cfg(not(test))]
-  pub fn info_url() -> String {
-    String::from(GOOGLE_INFO_URL)
-  }
-  #[cfg(test)]
-  pub fn info_url() -> String {
-    String::from(&mockito::server_url())
-  }
-
-  #[cfg(not(test))]
-  pub fn auth_url() -> String {
-    String::from(GOOGLE_AUTH_URL)
-  }
-  #[cfg(test)]
-  pub fn auth_url() -> String {
-    String::from(&mockito::server_url())
-  }
-
-  #[cfg(not(test))]
-  pub fn token_url() -> String {
-    String::from(GOOGLE_TOKEN_URL)
-  }
-  #[cfg(test)]
-  pub fn token_url() -> String {
-    String::from(&mockito::server_url())
-  }
 }
 
 impl Default for GoogleCredentials {
