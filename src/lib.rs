@@ -258,25 +258,7 @@ async fn exchange_code(code: &str, config: &Configuration) -> Result<TokenExchan
   }
 }
 
-async fn send_redirect<T>(writer: T, location: &str) -> Result<(), Error>
-where
-  T: async_std::io::Write + std::marker::Unpin,
-{
-  let mut out = Response::builder();
-  out
-    .status(StatusCode::FOUND)
-    .header(http::header::LOCATION, location);
-
-  match out.body(()) {
-    Ok(response) => write_response(writer, response).await,
-    Err(e) => {
-      println!("[warning] problem building response {:?}", e);
-      return Err(Error::from(ErrorKind::NotFound));
-    }
-  }
-}
-
-async fn bad_request<T>(writer: T) -> Result<(), Error>
+async fn write_error<T>(writer: T) -> Result<(), Error>
 where
   T: async_std::io::Write + std::marker::Unpin,
 {
@@ -292,38 +274,41 @@ where
   }
 }
 
-async fn not_found<T>(writer: T) -> Result<(), Error>
-where
-  T: async_std::io::Write + std::marker::Unpin,
-{
+fn not_found() -> Result<Response<()>, Error> {
   let mut out = Response::builder();
   out.status(StatusCode::NOT_FOUND);
-
-  match out.body(()) {
-    Ok(response) => write_response(writer, response).await,
-    Err(e) => {
-      println!("[warning] problem building response {:?}", e);
-      return Err(Error::from(ErrorKind::NotFound));
-    }
-  }
+  out
+    .body(())
+    .map_err(|e| Error::new(ErrorKind::Other, format!("{:?}", e)))
 }
 
-async fn authenticate<T>(writer: T, uri: Uri, config: &Configuration) -> Result<(), Error>
-where
-  T: async_std::io::Write + std::marker::Unpin,
-{
+fn redirect(location: &str) -> Result<Response<()>, Error> {
+  let mut out = Response::builder();
+  out
+    .status(StatusCode::FOUND)
+    .header(http::header::LOCATION, location)
+    .body(())
+    .map_err(|e| {
+      Error::new(
+        ErrorKind::Other,
+        format!("unable to create redirect: {:?}", e),
+      )
+    })
+}
+
+async fn authenticate(uri: Uri, config: &Configuration) -> Result<Response<()>, Error> {
   let code = match form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
     .find(|(key, _)| key == "code")
   {
     Some((_, code)) => code,
-    None => return not_found(writer).await,
+    None => return Err(Error::new(ErrorKind::Other, "no code")),
   };
 
   let authorization = match exchange_code(&code, config).await {
     Ok(token) => token,
     Err(e) => {
       println!("[warning] unable to exchange code: {:?}", e);
-      return bad_request(writer).await;
+      return Err(Error::new(ErrorKind::Other, "invalid code"));
     }
   };
 
@@ -357,20 +342,22 @@ where
 
   println!("[debug] successully stored user: {:?}", user_info);
 
-  send_redirect(writer, config.krumi.auth_uri.as_str()).await
+  redirect(config.krumi.auth_uri.as_str())
 }
 
-async fn identify<T>(writer: T) -> Result<(), Error>
-where
-  T: async_std::io::Write + std::marker::Unpin,
-{
-  not_found(writer).await
+async fn identify() -> Result<Response<()>, Error> {
+  Response::builder()
+    .status(StatusCode::NOT_FOUND)
+    .body(())
+    .map_err(|e| {
+      Error::new(
+        ErrorKind::Other,
+        format!("unable to create response: {:?}", e),
+      )
+    })
 }
 
-async fn login<T>(writer: T, config: &Configuration) -> Result<(), Error>
-where
-  T: async_std::io::Write + std::marker::Unpin,
-{
+async fn login(config: &Configuration) -> Result<Response<()>, Error> {
   println!("[debug] login attempt, building redir");
 
   let mut location = Url::parse(GOOGLE_AUTH_URL).map_err(|_| Error::from(ErrorKind::Other))?;
@@ -394,10 +381,10 @@ where
       constants::GOOGLE_AUTH_SCOPE_VALUE,
     );
 
-  send_redirect(writer, location.as_str()).await
+  redirect(location.as_str())
 }
 
-async fn handle<T>(mut stream: TcpStream, config: T) -> Result<(), Error>
+async fn handle<T>(stream: TcpStream, config: T) -> Result<(), Error>
 where
   T: std::convert::AsRef<Configuration>,
 {
@@ -410,14 +397,36 @@ where
   };
 
   match (headers.method, headers.uri.path()) {
-    (Method::GET, "/auth/redirect") => login(&mut stream, config.as_ref()).await?,
-    (Method::GET, "/auth/callback") => {
-      authenticate(&mut stream, headers.uri, config.as_ref()).await?
-    }
-    (Method::GET, "/auth/identify") => identify(&stream).await?,
+    (Method::GET, "/auth/redirect") => match login(config.as_ref()).await {
+      Ok(response) => write_response(&stream, response).await?,
+      Err(e) => {
+        println!("[warning] failed identify  attempt {:?}", e);
+        write_error(&stream).await?
+      }
+    },
+    (Method::GET, "/auth/callback") => match authenticate(headers.uri, config.as_ref()).await {
+      Ok(response) => write_response(&stream, response).await?,
+      Err(e) => {
+        println!("[warning] failed identify  attempt {:?}", e);
+        write_error(&stream).await?
+      }
+    },
+    (Method::GET, "/auth/identify") => match identify().await {
+      Ok(response) => write_response(&stream, response).await?,
+      Err(e) => {
+        println!("[warning] failed identify  attempt {:?}", e);
+        write_error(&stream).await?
+      }
+    },
     _ => {
       println!("[debug] 404 for {:?}", headers.uri);
-      not_found(&mut stream).await?;
+      match not_found() {
+        Ok(response) => write_response(&stream, response).await?,
+        Err(e) => {
+          println!("[warning] failed identify  attempt {:?}", e);
+          write_error(&stream).await?
+        }
+      }
     }
   }
 
