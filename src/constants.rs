@@ -9,6 +9,8 @@ pub const GOOGLE_AUTH_REDIRECT_URI_KEY: &'static str = "redirect_uri";
 pub const GOOGLE_AUTH_SCOPE_KEY: &'static str = "scope";
 pub const GOOGLE_AUTH_SCOPE_VALUE: &'static str = "email profile";
 
+pub const KRUMI_SESSION_ID_KEY: &'static str = "session_id";
+
 #[cfg(not(test))]
 pub fn google_info_url() -> String {
   String::from(GOOGLE_INFO_URL)

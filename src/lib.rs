@@ -7,6 +7,7 @@ extern crate redis;
 extern crate serde;
 extern crate serde_json;
 extern crate url;
+extern crate uuid;
 
 pub mod configuration;
 pub mod constants;
@@ -20,18 +21,25 @@ use configuration::Configuration;
 use http::header::{self, HeaderMap, HeaderName, HeaderValue};
 use http::status::StatusCode;
 use http::{Method, Request, Response, Uri};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 use url::{form_urlencoded, Url};
 
+fn normalize_error<E>(e: E) -> Error
+where
+  E: std::error::Error,
+{
+  Error::new(ErrorKind::Other, format!("{}", e))
+}
+
 fn parse_header_name(raw_value: &str) -> Result<HeaderName, Error> {
-  HeaderName::from_bytes(raw_value.as_bytes()).map_err(|_e| Error::from(ErrorKind::InvalidData))
+  HeaderName::from_bytes(raw_value.as_bytes()).map_err(normalize_error)
 }
 
 fn parse_header_value(raw_value: &str) -> Result<HeaderValue, Error> {
-  HeaderValue::from_bytes(raw_value.as_bytes()).map_err(|_e| Error::from(ErrorKind::InvalidData))
+  HeaderValue::from_bytes(raw_value.as_bytes()).map_err(normalize_error)
 }
 
 fn parse_header_line(line: String) -> Result<(HeaderName, HeaderValue), Error> {
@@ -43,14 +51,14 @@ fn parse_header_line(line: String) -> Result<(HeaderName, HeaderValue), Error> {
 }
 
 fn parse_method(raw_value: &str) -> Result<Method, Error> {
-  Method::from_bytes(raw_value.as_bytes()).map_err(|_e| Error::from(ErrorKind::InvalidData))
+  Method::from_bytes(raw_value.as_bytes()).map_err(normalize_error)
 }
 
 fn parse_request_path(raw_value: &str) -> Result<Uri, Error> {
   http::Uri::builder()
     .path_and_query(raw_value)
     .build()
-    .map_err(|_| Error::from(ErrorKind::AddrNotAvailable))
+    .map_err(normalize_error)
 }
 
 fn parse_request_line(line: String) -> Result<(Method, Uri), Error> {
@@ -110,10 +118,12 @@ where
 async fn write_response<T, U>(mut writer: T, response: Response<U>) -> Result<(), Error>
 where
   T: async_std::io::Write + std::marker::Unpin,
+  U: serde::Serialize,
 {
-  let (bits, _) = response.into_parts();
+  let (bits, body) = response.into_parts();
   let bytes = format!(
-    "HTTP/1.1 {} {}\r\n",
+    "{:?} {} {}\r\n",
+    http::Version::HTTP_11,
     bits.status.as_str(),
     bits.status.canonical_reason().unwrap_or_default(),
   );
@@ -121,21 +131,27 @@ where
   writer
     .write(bytes.as_bytes())
     .await
-    .map_err(|_| Error::from(ErrorKind::Other))?;
+    .map_err(normalize_error)?;
 
   let mut headers = bits.headers;
   headers.insert(
     header::CONNECTION,
-    HeaderValue::from_str("close").map_err(|e| Error::new(ErrorKind::Other, format!("{}", e)))?,
+    HeaderValue::from_str("close").map_err(normalize_error)?,
   );
 
   if let Ok(value) = date() {
     headers.insert(header::DATE, value);
   }
 
+  let mut data = String::new();
+
+  if let Ok(serialized) = serde_json::to_string(&body) {
+    data = serialized;
+  }
+
   if headers.get(header::CONTENT_LENGTH).is_none() {
     let value =
-      HeaderValue::from_str("0").map_err(|e| Error::new(ErrorKind::Other, format!("{}", e)))?;
+      HeaderValue::from_str(format!("{}", data.len()).as_str()).map_err(normalize_error)?;
     headers.insert(header::CONTENT_LENGTH, value);
   }
 
@@ -151,7 +167,12 @@ where
   writer
     .write(out.as_bytes())
     .await
-    .map_err(|_| Error::from(ErrorKind::Other))?;
+    .map_err(normalize_error)?;
+
+  writer
+    .write(data.as_bytes())
+    .await
+    .map_err(normalize_error)?;
 
   writer.flush().await
 }
@@ -175,7 +196,7 @@ struct TokenExchangePayload {
   access_token: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct UserInfoPayload {
   name: String,
   sub: String,
@@ -184,12 +205,7 @@ struct UserInfoPayload {
 }
 
 fn make_client() -> Result<isahc::HttpClient, Error> {
-  isahc::HttpClient::new().map_err(|e| {
-    Error::new(
-      ErrorKind::Other,
-      format!("unable to open http connection: {:?}", e),
-    )
-  })
+  isahc::HttpClient::new().map_err(normalize_error)
 }
 
 async fn fetch_info(authorization: TokenExchangePayload) -> Result<UserInfoPayload, Error> {
@@ -201,13 +217,10 @@ async fn fetch_info(authorization: TokenExchangePayload) -> Result<UserInfoPaylo
     .uri(constants::google_info_url())
     .header("Authorization", bearer.as_str());
 
-  match client.send(
-    request
-      .body(())
-      .map_err(|e| Error::new(ErrorKind::Other, format!("{}", e)))?,
-  ) {
-    Ok(mut response) if response.status() == 200 => serde_json::from_reader(response.body_mut())
-      .map_err(|e| Error::new(ErrorKind::Other, format!("{}", e))),
+  match client.send(request.body(()).map_err(normalize_error)?) {
+    Ok(mut response) if response.status() == 200 => {
+      serde_json::from_reader(response.body_mut()).map_err(normalize_error)
+    }
     Ok(response) => Err(Error::new(
       ErrorKind::Other,
       format!("bad response satus from google sso: {}", response.status()),
@@ -271,9 +284,7 @@ where
 fn not_found() -> Result<Response<()>, Error> {
   let mut out = Response::builder();
   out.status(StatusCode::NOT_FOUND);
-  out
-    .body(())
-    .map_err(|e| Error::new(ErrorKind::Other, format!("{:?}", e)))
+  out.body(()).map_err(normalize_error)
 }
 
 fn redirect(location: &str) -> Result<Response<()>, Error> {
@@ -282,12 +293,7 @@ fn redirect(location: &str) -> Result<Response<()>, Error> {
     .status(StatusCode::FOUND)
     .header(http::header::LOCATION, location)
     .body(())
-    .map_err(|e| {
-      Error::new(
-        ErrorKind::Other,
-        format!("unable to create redirect: {:?}", e),
-      )
-    })
+    .map_err(normalize_error)
 }
 
 async fn authenticate(uri: Uri, config: &Configuration) -> Result<Response<()>, Error> {
@@ -306,54 +312,76 @@ async fn authenticate(uri: Uri, config: &Configuration) -> Result<Response<()>, 
     }
   };
 
-  let user_info = fetch_info(authorization).await.map_err(|e| {
-    Error::new(
-      ErrorKind::Other,
-      format!("unable to loader user info: {:?}", e),
-    )
-  })?;
-
-  println!("[debug] successully loaded user: {:?}", user_info);
+  let user_info = fetch_info(authorization).await.map_err(normalize_error)?;
 
   let redis_client =
-    redis::Client::open(config.krumi.session_store.redis_uri.as_str()).map_err(|e| {
-      Error::new(
-        ErrorKind::Other,
-        format!("invalid redis configuration url: {}", e),
-      )
-    })?;
+    redis::Client::open(config.krumi.session_store.redis_uri.as_str()).map_err(normalize_error)?;
 
-  let mut con = redis_client.get_connection().map_err(|e| {
-    Error::new(
-      ErrorKind::Other,
-      format!("unable to open connection: {}", e),
-    )
-  })?;
+  let mut con = redis_client.get_connection().map_err(normalize_error)?;
+
+  let id = uuid::Uuid::new_v4();
 
   redis::cmd("PING")
     .query(&mut con)
-    .map_err(|e| Error::new(ErrorKind::Other, format!("unable to ping server: {}", e)))?;
+    .map_err(normalize_error)?;
 
-  println!("[debug] successully stored user: {:?}", user_info);
+  let data = serde_json::to_vec(&user_info).map_err(normalize_error)?;
 
-  redirect(config.krumi.auth_uri.as_str())
+  redis::cmd("SET")
+    .arg(format!("session:{}", id))
+    .arg(data)
+    .query(&mut con)
+    .map_err(normalize_error)?;
+
+  println!(
+    "[debug] session {:?} created, stored user: {:?}",
+    id, user_info
+  );
+
+  let mut location = Url::parse(config.krumi.auth_uri.as_str()).map_err(normalize_error)?;
+
+  location
+    .query_pairs_mut()
+    .clear()
+    .append_pair(constants::KRUMI_SESSION_ID_KEY, format!("{}", id).as_str());
+
+  redirect(location.as_str())
 }
 
-async fn identify() -> Result<Response<()>, Error> {
+async fn identify(uri: Uri, config: &Configuration) -> Result<Response<UserInfoPayload>, Error> {
+  let session_id = match form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
+    .find(|(key, _)| key == "session_id")
+  {
+    Some((_, code)) => code,
+    None => return Err(Error::new(ErrorKind::Other, "no session id")),
+  };
+
+  println!("[debug] finding session id {}", session_id);
+
+  let redis_client =
+    redis::Client::open(config.krumi.session_store.redis_uri.as_str()).map_err(normalize_error)?;
+
+  let foo: String = redis::cmd("GET")
+    .arg(format!("session:{}", session_id))
+    .query(&mut redis_client.get_connection().map_err(normalize_error)?)
+    .map_err(normalize_error)?;
+
+  let user_info: UserInfoPayload = serde_json::from_str(foo.as_str()).map_err(normalize_error)?;
+
+  println!(
+    "[debug] session info lookup complete; found user info: {:?}",
+    user_info
+  );
+
   Response::builder()
-    .status(StatusCode::NOT_FOUND)
-    .body(())
-    .map_err(|e| {
-      Error::new(
-        ErrorKind::Other,
-        format!("unable to create response: {:?}", e),
-      )
-    })
+    .status(StatusCode::OK)
+    .header(http::header::CONTENT_TYPE, "application/json")
+    .body(user_info)
+    .map_err(normalize_error)
 }
 
 async fn login(config: &Configuration) -> Result<Response<()>, Error> {
-  let mut location =
-    Url::parse(constants::google_auth_url().as_str()).map_err(|_| Error::from(ErrorKind::Other))?;
+  let mut location = Url::parse(constants::google_auth_url().as_str()).map_err(normalize_error)?;
 
   println!("[debug] login attempt, building redir");
 
@@ -407,7 +435,7 @@ where
         write_error(&stream).await?
       }
     },
-    (Method::GET, "/auth/identify") => match identify().await {
+    (Method::GET, "/auth/identify") => match identify(headers.uri, config.as_ref()).await {
       Ok(response) => write_response(&stream, response).await?,
       Err(e) => {
         println!("[warning] failed identify  attempt {:?}", e);
