@@ -377,8 +377,6 @@ async fn identify(uri: Uri, config: &Configuration) -> Result<Response<UserInfoP
     None => return Err(Error::new(ErrorKind::Other, "no session id")),
   };
 
-  println!("[debug] identifying user w/ token {}", token);
-
   let token_data = decode::<SessionClaims>(
     &token,
     config.session_secret.as_ref(),
@@ -403,10 +401,7 @@ async fn identify(uri: Uri, config: &Configuration) -> Result<Response<UserInfoP
 
   let user_info: UserInfoPayload = serde_json::from_str(foo.as_str()).map_err(normalize_error)?;
 
-  println!(
-    "[debug] session info lookup complete; found user info: {:?}",
-    user_info
-  );
+  println!("[debug] session info lookup complete; found user info");
 
   Response::builder()
     .status(StatusCode::OK)
@@ -456,10 +451,32 @@ where
   };
 
   if let Some(value) = head.headers.get(http::header::AUTHORIZATION) {
-    println!(
-      "[debug] handling authorized request '{}'",
-      value.to_str().map_err(normalize_error)?.trim_start()
-    );
+    let mut normalized = value
+      .to_str()
+      .map_err(normalize_error)?
+      .trim_start()
+      .split_whitespace();
+
+    match (normalized.next(), normalized.next()) {
+      (Some("Bearer"), Some(token)) => {
+        let token_data = decode::<SessionClaims>(
+          &token,
+          config.as_ref().session_secret.as_ref(),
+          &Validation {
+            leeway: 1000,
+            ..Validation::default()
+          },
+        )
+        .map_err(normalize_error)?;
+        println!(
+          "[debug] handling authorized request: {:?}",
+          token_data.claims.id
+        );
+      }
+      _ => {
+        println!("[warning] invalid authorization header value '{:?}'", value);
+      }
+    }
   }
 
   match (head.method, head.uri.path()) {
