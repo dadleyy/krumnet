@@ -16,6 +16,9 @@ pub struct Configuration {
 
   #[serde(default)]
   pub addr: String,
+
+  #[serde(default)]
+  pub session_secret: String,
 }
 
 impl Default for Configuration {
@@ -26,6 +29,7 @@ impl Default for Configuration {
       google,
       krumi,
       addr: String::from("0.0.0.0:8080"),
+      session_secret: format!("{}", uuid::Uuid::new_v4()),
     }
   }
 }

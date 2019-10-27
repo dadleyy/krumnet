@@ -3,6 +3,7 @@ extern crate chrono;
 extern crate chrono_tz;
 extern crate http;
 extern crate isahc;
+extern crate jsonwebtoken as jwt;
 extern crate redis;
 extern crate serde;
 extern crate serde_json;
@@ -21,11 +22,18 @@ use configuration::Configuration;
 use http::header::{self, HeaderMap, HeaderName, HeaderValue};
 use http::status::StatusCode;
 use http::{Method, Request, Response, Uri};
+use jwt::{decode, encode, Header, Validation};
 use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 use url::{form_urlencoded, Url};
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SessionClaims {
+  id: String,
+  exp: u64,
+}
 
 fn normalize_error<E>(e: E) -> Error
 where
@@ -76,7 +84,7 @@ struct RequestHead {
   uri: Uri,
 }
 
-async fn read_headers<T>(reader: T) -> Result<RequestHead, Error>
+async fn read_head<T>(reader: T) -> Result<RequestHead, Error>
 where
   T: async_std::io::Read + std::marker::Unpin,
 {
@@ -333,28 +341,55 @@ async fn authenticate(uri: Uri, config: &Configuration) -> Result<Response<()>, 
     .query(&mut con)
     .map_err(normalize_error)?;
 
+  let exp = (std::time::SystemTime::now() + std::time::Duration::from_secs(60 * 60 * 24))
+    .duration_since(std::time::UNIX_EPOCH)
+    .map_err(normalize_error)?
+    .as_secs();
+
+  let claims = SessionClaims {
+    exp,
+    id: format!("{}", id),
+  };
+
+  let token =
+    encode(&Header::default(), &claims, config.session_secret.as_ref()).map_err(normalize_error)?;
+
   println!(
-    "[debug] session {:?} created, stored user: {:?}",
-    id, user_info
+    "[debug] session {:?} created, stored user: {:?} ({:?})",
+    id, user_info, token
   );
 
   let mut location = Url::parse(config.krumi.auth_uri.as_str()).map_err(normalize_error)?;
 
-  location
-    .query_pairs_mut()
-    .clear()
-    .append_pair(constants::KRUMI_SESSION_ID_KEY, format!("{}", id).as_str());
+  location.query_pairs_mut().clear().append_pair(
+    constants::KRUMI_SESSION_ID_KEY,
+    format!("{}", token).as_str(),
+  );
 
   redirect(location.as_str())
 }
 
 async fn identify(uri: Uri, config: &Configuration) -> Result<Response<UserInfoPayload>, Error> {
-  let session_id = match form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
+  let token = match form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
     .find(|(key, _)| key == "session_id")
   {
     Some((_, code)) => code,
     None => return Err(Error::new(ErrorKind::Other, "no session id")),
   };
+
+  println!("[debug] identifying user w/ token {}", token);
+
+  let token_data = decode::<SessionClaims>(
+    &token,
+    config.session_secret.as_ref(),
+    &Validation {
+      leeway: 1000,
+      ..Validation::default()
+    },
+  )
+  .map_err(normalize_error)?;
+
+  let session_id = token_data.claims.id;
 
   println!("[debug] finding session id {}", session_id);
 
@@ -412,7 +447,7 @@ async fn handle<T>(stream: TcpStream, config: T) -> Result<(), Error>
 where
   T: std::convert::AsRef<Configuration>,
 {
-  let headers = match read_headers(&stream).await {
+  let head = match read_head(&stream).await {
     Ok(v) => v,
     Err(e) => {
       println!("[warning] unable to parse headers: {:?}", e);
@@ -420,7 +455,14 @@ where
     }
   };
 
-  match (headers.method, headers.uri.path()) {
+  if let Some(value) = head.headers.get(http::header::AUTHORIZATION) {
+    println!(
+      "[debug] handling authorized request '{}'",
+      value.to_str().map_err(normalize_error)?.trim_start()
+    );
+  }
+
+  match (head.method, head.uri.path()) {
     (Method::GET, "/auth/redirect") => match login(config.as_ref()).await {
       Ok(response) => write_response(&stream, response).await?,
       Err(e) => {
@@ -428,14 +470,14 @@ where
         write_error(&stream).await?
       }
     },
-    (Method::GET, "/auth/callback") => match authenticate(headers.uri, config.as_ref()).await {
+    (Method::GET, "/auth/callback") => match authenticate(head.uri, config.as_ref()).await {
       Ok(response) => write_response(&stream, response).await?,
       Err(e) => {
         println!("[warning] failed identify  attempt {:?}", e);
         write_error(&stream).await?
       }
     },
-    (Method::GET, "/auth/identify") => match identify(headers.uri, config.as_ref()).await {
+    (Method::GET, "/auth/identify") => match identify(head.uri, config.as_ref()).await {
       Ok(response) => write_response(&stream, response).await?,
       Err(e) => {
         println!("[warning] failed identify  attempt {:?}", e);
@@ -443,7 +485,7 @@ where
       }
     },
     _ => {
-      println!("[debug] 404 for {:?}", headers.uri);
+      println!("[debug] 404 for {:?}", head.uri);
       match not_found() {
         Ok(response) => write_response(&stream, response).await?,
         Err(e) => {

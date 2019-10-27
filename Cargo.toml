@@ -23,6 +23,7 @@ gumdrop = "^0.7"
 serde_json = "^1.0"
 isahc = "^0.7"
 redis = "^0.13"
+jsonwebtoken = "^6.0"
 
 [dependencies.uuid]
 version = "^0.8"
