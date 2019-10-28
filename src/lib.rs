@@ -147,6 +147,35 @@ where
     HeaderValue::from_str("close").map_err(normalize_error)?,
   );
 
+  headers.insert(
+    header::ACCESS_CONTROL_ALLOW_ORIGIN,
+    HeaderValue::from_str("http://0.0.0.0:4200").map_err(normalize_error)?,
+  );
+
+  headers.insert(
+    http::header::ACCESS_CONTROL_MAX_AGE,
+    HeaderValue::from_str("3600").map_err(normalize_error)?,
+  );
+
+  headers.insert(
+    header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
+    HeaderValue::from_str("true").map_err(normalize_error)?,
+  );
+
+  headers.insert(
+    header::ACCESS_CONTROL_ALLOW_HEADERS,
+    HeaderValue::from_str(
+      "access-control-allow-credentials, access-control-allow-origin, authorization",
+    )
+    .map_err(normalize_error)?,
+  );
+
+  headers.insert(
+    header::ACCESS_CONTROL_ALLOW_METHODS,
+    HeaderValue::from_str("GET, HEAD, POST, PUT, DELETE, TRACE, OPTIONS, PATCH")
+      .map_err(normalize_error)?,
+  );
+
   if let Ok(value) = date() {
     headers.insert(header::DATE, value);
   }
@@ -287,6 +316,12 @@ where
       return Err(Error::from(ErrorKind::NotFound));
     }
   }
+}
+
+fn empty() -> Result<Response<()>, Error> {
+  let mut out = Response::builder();
+  out.status(StatusCode::OK);
+  out.body(()).map_err(normalize_error)
 }
 
 fn not_found() -> Result<Response<()>, Error> {
@@ -477,6 +512,8 @@ where
         println!("[warning] invalid authorization header value '{:?}'", value);
       }
     }
+  } else {
+    println!("[debug] no authorization header found: {:?}", head.headers);
   }
 
   match (head.method, head.uri.path()) {
@@ -501,6 +538,16 @@ where
         write_error(&stream).await?
       }
     },
+    (Method::OPTIONS, "/auth/identify") => {
+      println!("[debug] preflight request for {:?}", head.uri);
+      match empty() {
+        Ok(response) => write_response(&stream, response).await?,
+        Err(e) => {
+          println!("[warning] failed identify  attempt {:?}", e);
+          write_error(&stream).await?
+        }
+      }
+    }
     _ => {
       println!("[debug] 404 for {:?}", head.uri);
       match not_found() {
