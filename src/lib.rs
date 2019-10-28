@@ -79,12 +79,13 @@ fn parse_request_line(line: String) -> Result<(Method, Uri), Error> {
 
 #[derive(Debug)]
 struct RequestHead {
+  session_claims: Option<SessionClaims>,
   headers: HeaderMap,
   method: Method,
   uri: Uri,
 }
 
-async fn read_head<T>(reader: T) -> Result<RequestHead, Error>
+async fn read_head<T>(reader: T, config: &Configuration) -> Result<RequestHead, Error>
 where
   T: async_std::io::Read + std::marker::Unpin,
 {
@@ -115,11 +116,45 @@ where
     }
   }
 
+  let mut session_claims: Option<SessionClaims> = None;
+
+  if let Some(value) = map.get(http::header::AUTHORIZATION) {
+    let mut normalized = value
+      .to_str()
+      .map_err(normalize_error)?
+      .trim_start()
+      .split_whitespace();
+
+    match (normalized.next(), normalized.next()) {
+      (Some("Bearer"), Some(token)) => {
+        let token_data = decode::<SessionClaims>(
+          &token,
+          config.session_secret.as_ref(),
+          &Validation {
+            leeway: 1000,
+            ..Validation::default()
+          },
+        )
+        .map_err(normalize_error)?;
+        println!(
+          "[debug] handling authorized request: {:?}",
+          token_data.claims.id
+        );
+
+        session_claims = Some(token_data.claims);
+      }
+      _ => {
+        println!("[warning] invalid authorization header value '{:?}'", value);
+      }
+    }
+  }
+
   let (method, uri) = parse_request_line(request_line)?;
   Ok(RequestHead {
-    headers: map,
-    method,
     uri,
+    method,
+    session_claims,
+    headers: map,
   })
 }
 
@@ -142,38 +177,10 @@ where
     .map_err(normalize_error)?;
 
   let mut headers = bits.headers;
+
   headers.insert(
     header::CONNECTION,
     HeaderValue::from_str("close").map_err(normalize_error)?,
-  );
-
-  headers.insert(
-    header::ACCESS_CONTROL_ALLOW_ORIGIN,
-    HeaderValue::from_str("http://0.0.0.0:4200").map_err(normalize_error)?,
-  );
-
-  headers.insert(
-    http::header::ACCESS_CONTROL_MAX_AGE,
-    HeaderValue::from_str("3600").map_err(normalize_error)?,
-  );
-
-  headers.insert(
-    header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
-    HeaderValue::from_str("true").map_err(normalize_error)?,
-  );
-
-  headers.insert(
-    header::ACCESS_CONTROL_ALLOW_HEADERS,
-    HeaderValue::from_str(
-      "access-control-allow-credentials, access-control-allow-origin, authorization",
-    )
-    .map_err(normalize_error)?,
-  );
-
-  headers.insert(
-    header::ACCESS_CONTROL_ALLOW_METHODS,
-    HeaderValue::from_str("GET, HEAD, POST, PUT, DELETE, TRACE, OPTIONS, PATCH")
-      .map_err(normalize_error)?,
   );
 
   if let Ok(value) = date() {
@@ -233,7 +240,7 @@ struct TokenExchangePayload {
   access_token: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Default, Serialize)]
 struct UserInfoPayload {
   name: String,
   sub: String,
@@ -302,10 +309,12 @@ async fn exchange_code(code: &str, config: &Configuration) -> Result<TokenExchan
   }
 }
 
-async fn write_error<T>(writer: T) -> Result<(), Error>
+async fn write_error<T, E>(writer: T, e: E) -> Result<(), Error>
 where
   T: async_std::io::Write + std::marker::Unpin,
+  E: std::error::Error,
 {
+  println!("[warning] 400 - {:?}", e);
   let mut out = Response::builder();
   out.status(StatusCode::BAD_REQUEST);
 
@@ -318,7 +327,7 @@ where
   }
 }
 
-fn empty() -> Result<Response<()>, Error> {
+fn preflight() -> Result<Response<()>, Error> {
   let mut out = Response::builder();
   out.status(StatusCode::OK);
   out.body(()).map_err(normalize_error)
@@ -337,6 +346,41 @@ fn redirect(location: &str) -> Result<Response<()>, Error> {
     .header(http::header::LOCATION, location)
     .body(())
     .map_err(normalize_error)
+}
+
+fn with_cors<T>(config: &Configuration, mut response: Response<T>) -> Result<Response<T>, Error> {
+  let headers = response.headers_mut();
+
+  headers.insert(
+    header::ACCESS_CONTROL_ALLOW_ORIGIN,
+    HeaderValue::from_str(&config.krumi.cors_origin).map_err(normalize_error)?,
+  );
+
+  headers.insert(
+    http::header::ACCESS_CONTROL_MAX_AGE,
+    HeaderValue::from_str("3600").map_err(normalize_error)?,
+  );
+
+  headers.insert(
+    header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
+    HeaderValue::from_str("true").map_err(normalize_error)?,
+  );
+
+  headers.insert(
+    header::ACCESS_CONTROL_ALLOW_HEADERS,
+    HeaderValue::from_str(
+      "access-control-allow-credentials, access-control-allow-origin, authorization",
+    )
+    .map_err(normalize_error)?,
+  );
+
+  headers.insert(
+    header::ACCESS_CONTROL_ALLOW_METHODS,
+    HeaderValue::from_str("GET, HEAD, POST, PUT, DELETE, TRACE, OPTIONS, PATCH")
+      .map_err(normalize_error)?,
+  );
+
+  Ok(response)
 }
 
 async fn authenticate(uri: Uri, config: &Configuration) -> Result<Response<()>, Error> {
@@ -404,25 +448,14 @@ async fn authenticate(uri: Uri, config: &Configuration) -> Result<Response<()>, 
   redirect(location.as_str())
 }
 
-async fn identify(uri: Uri, config: &Configuration) -> Result<Response<UserInfoPayload>, Error> {
-  let token = match form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
-    .find(|(key, _)| key == "session_id")
-  {
-    Some((_, code)) => code,
+fn identify(
+  head: &RequestHead,
+  config: &Configuration,
+) -> Result<Response<UserInfoPayload>, Error> {
+  let session_id = match &head.session_claims {
+    Some(claims) => claims.id.as_str(),
     None => return Err(Error::new(ErrorKind::Other, "no session id")),
   };
-
-  let token_data = decode::<SessionClaims>(
-    &token,
-    config.session_secret.as_ref(),
-    &Validation {
-      leeway: 1000,
-      ..Validation::default()
-    },
-  )
-  .map_err(normalize_error)?;
-
-  let session_id = token_data.claims.id;
 
   println!("[debug] finding session id {}", session_id);
 
@@ -445,7 +478,7 @@ async fn identify(uri: Uri, config: &Configuration) -> Result<Response<UserInfoP
     .map_err(normalize_error)
 }
 
-async fn login(config: &Configuration) -> Result<Response<()>, Error> {
+fn login(config: &Configuration) -> Result<Response<()>, Error> {
   let mut location = Url::parse(constants::google_auth_url().as_str()).map_err(normalize_error)?;
 
   println!("[debug] login attempt, building redir");
@@ -473,11 +506,42 @@ async fn login(config: &Configuration) -> Result<Response<()>, Error> {
   redirect(location.as_str())
 }
 
+async fn forget(head: &RequestHead, config: &Configuration) -> Result<Response<()>, Error> {
+  let token = match form_urlencoded::parse(head.uri.query().unwrap_or_default().as_bytes())
+    .find(|(key, _)| key == "session_id")
+  {
+    Some((_, code)) => code,
+    None => return Err(Error::new(ErrorKind::Other, "no session id")),
+  };
+
+  let token_data = decode::<SessionClaims>(
+    &token,
+    config.session_secret.as_ref(),
+    &Validation {
+      leeway: 1000,
+      ..Validation::default()
+    },
+  )
+  .map_err(normalize_error)?;
+
+  let session_id = token_data.claims.id;
+
+  let redis_client =
+    redis::Client::open(config.krumi.session_store.redis_uri.as_str()).map_err(normalize_error)?;
+
+  redis::cmd("DEL")
+    .arg(format!("session:{}", session_id))
+    .query(&mut redis_client.get_connection().map_err(normalize_error)?)
+    .map_err(normalize_error)?;
+
+  redirect(&config.krumi.auth_uri)
+}
+
 async fn handle<T>(stream: TcpStream, config: T) -> Result<(), Error>
 where
   T: std::convert::AsRef<Configuration>,
 {
-  let head = match read_head(&stream).await {
+  let head = match read_head(&stream, config.as_ref()).await {
     Ok(v) => v,
     Err(e) => {
       println!("[warning] unable to parse headers: {:?}", e);
@@ -485,78 +549,36 @@ where
     }
   };
 
-  if let Some(value) = head.headers.get(http::header::AUTHORIZATION) {
-    let mut normalized = value
-      .to_str()
-      .map_err(normalize_error)?
-      .trim_start()
-      .split_whitespace();
-
-    match (normalized.next(), normalized.next()) {
-      (Some("Bearer"), Some(token)) => {
-        let token_data = decode::<SessionClaims>(
-          &token,
-          config.as_ref().session_secret.as_ref(),
-          &Validation {
-            leeway: 1000,
-            ..Validation::default()
-          },
-        )
-        .map_err(normalize_error)?;
-        println!(
-          "[debug] handling authorized request: {:?}",
-          token_data.claims.id
-        );
-      }
-      _ => {
-        println!("[warning] invalid authorization header value '{:?}'", value);
+  match (head.method.clone(), head.uri.path()) {
+    (Method::OPTIONS, _) => {
+      println!("[debug] preflight request for {:?}", head.uri);
+      match preflight().and_then(|r| with_cors(config.as_ref(), r)) {
+        Ok(response) => write_response(&stream, response).await?,
+        Err(e) => write_error(&stream, e).await?,
       }
     }
-  } else {
-    println!("[debug] no authorization header found: {:?}", head.headers);
-  }
-
-  match (head.method, head.uri.path()) {
-    (Method::GET, "/auth/redirect") => match login(config.as_ref()).await {
+    (Method::GET, "/auth/redirect") => match login(config.as_ref()) {
       Ok(response) => write_response(&stream, response).await?,
-      Err(e) => {
-        println!("[warning] failed identify  attempt {:?}", e);
-        write_error(&stream).await?
-      }
+      Err(e) => write_error(&stream, e).await?,
     },
     (Method::GET, "/auth/callback") => match authenticate(head.uri, config.as_ref()).await {
       Ok(response) => write_response(&stream, response).await?,
-      Err(e) => {
-        println!("[warning] failed identify  attempt {:?}", e);
-        write_error(&stream).await?
-      }
+      Err(e) => write_error(&stream, e).await?,
     },
-    (Method::GET, "/auth/identify") => match identify(head.uri, config.as_ref()).await {
+    (Method::GET, "/auth/forget") => match forget(&head, config.as_ref()).await {
       Ok(response) => write_response(&stream, response).await?,
-      Err(e) => {
-        println!("[warning] failed identify  attempt {:?}", e);
-        write_error(&stream).await?
-      }
+      Err(e) => write_error(&stream, e).await?,
     },
-    (Method::OPTIONS, "/auth/identify") => {
-      println!("[debug] preflight request for {:?}", head.uri);
-      match empty() {
+    (Method::GET, "/auth/identify") => {
+      println!("[debug] identify request for {:?}", head.uri);
+      match identify(&head, config.as_ref()).and_then(|r| with_cors(config.as_ref(), r)) {
         Ok(response) => write_response(&stream, response).await?,
-        Err(e) => {
-          println!("[warning] failed identify  attempt {:?}", e);
-          write_error(&stream).await?
-        }
+        Err(e) => write_error(&stream, e).await?,
       }
     }
     _ => {
       println!("[debug] 404 for {:?}", head.uri);
-      match not_found() {
-        Ok(response) => write_response(&stream, response).await?,
-        Err(e) => {
-          println!("[warning] failed identify  attempt {:?}", e);
-          write_error(&stream).await?
-        }
-      }
+      write_response(&stream, not_found()?).await?;
     }
   }
 

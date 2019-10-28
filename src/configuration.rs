@@ -99,6 +99,9 @@ pub struct KrumiConfiguration {
   pub auth_uri: String,
 
   #[serde(default)]
+  pub cors_origin: String,
+
+  #[serde(default)]
   pub session_store: SessionStoreConfiguration,
 }
 
