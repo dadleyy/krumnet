@@ -529,6 +529,8 @@ async fn forget(head: &RequestHead, config: &Configuration) -> Result<Response<(
   let redis_client =
     redis::Client::open(config.krumi.session_store.redis_uri.as_str()).map_err(normalize_error)?;
 
+  println!("[debug] deleting session {}", session_id);
+
   redis::cmd("DEL")
     .arg(format!("session:{}", session_id))
     .query(&mut redis_client.get_connection().map_err(normalize_error)?)
