@@ -15,6 +15,12 @@ pub struct Configuration {
   pub krumi: KrumiConfiguration,
 
   #[serde(default)]
+  pub session_store: SessionStoreConfiguration,
+
+  #[serde(default)]
+  pub record_store: RecordStoreConfiguration,
+
+  #[serde(default)]
   pub addr: String,
 
   #[serde(default)]
@@ -29,6 +35,8 @@ impl Default for Configuration {
       google,
       krumi,
       addr: String::from("0.0.0.0:8080"),
+      session_store: SessionStoreConfiguration::default(),
+      record_store: RecordStoreConfiguration::default(),
       session_secret: format!("{}", uuid::Uuid::new_v4()),
     }
   }
@@ -100,9 +108,11 @@ pub struct KrumiConfiguration {
 
   #[serde(default)]
   pub cors_origin: String,
+}
 
-  #[serde(default)]
-  pub session_store: SessionStoreConfiguration,
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct RecordStoreConfiguration {
+  pub postgres_uri: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

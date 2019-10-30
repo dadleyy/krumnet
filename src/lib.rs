@@ -4,6 +4,8 @@ extern crate chrono_tz;
 extern crate http;
 extern crate isahc;
 extern crate jsonwebtoken as jwt;
+extern crate r2d2;
+extern crate r2d2_postgres;
 extern crate redis;
 extern crate serde;
 extern crate serde_json;
@@ -23,11 +25,18 @@ use http::header::{self, HeaderMap, HeaderName, HeaderValue};
 use http::status::StatusCode;
 use http::{Method, Request, Response, Uri};
 use jwt::{decode, encode, Header, Validation};
+use r2d2_postgres::{PostgresConnectionManager, TlsMode};
 use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 use url::{form_urlencoded, Url};
+
+const MAKE_USER: &'static str = r#"
+with new_user as (
+    insert into users (default_email, name) values ($1, $2) returning id 
+) insert into google_accounts (email, name, google_id, user_id) select $3, $4, $5, new_user.id from new_user;
+"#;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SessionClaims {
@@ -240,7 +249,7 @@ struct TokenExchangePayload {
   access_token: String,
 }
 
-#[derive(Debug, Deserialize, Default, Serialize)]
+#[derive(Debug, Clone, Deserialize, Default, Serialize)]
 struct UserInfoPayload {
   name: String,
   sub: String,
@@ -250,6 +259,27 @@ struct UserInfoPayload {
 
 fn make_client() -> Result<isahc::HttpClient, Error> {
   isahc::HttpClient::new().map_err(normalize_error)
+}
+
+fn make_user(
+  user_info: UserInfoPayload,
+  record_store: r2d2::Pool<r2d2_postgres::PostgresConnectionManager>,
+) -> Result<UserInfoPayload, Error> {
+  record_store
+    .get()
+    .map_err(normalize_error)?
+    .execute(
+      MAKE_USER,
+      &[
+        &user_info.email,
+        &user_info.name,
+        &user_info.email,
+        &user_info.name,
+        &user_info.sub,
+      ],
+    )
+    .map_err(normalize_error)?;
+  Ok(user_info)
 }
 
 async fn fetch_info(authorization: TokenExchangePayload) -> Result<UserInfoPayload, Error> {
@@ -383,7 +413,11 @@ fn with_cors<T>(config: &Configuration, mut response: Response<T>) -> Result<Res
   Ok(response)
 }
 
-async fn authenticate(uri: Uri, config: &Configuration) -> Result<Response<()>, Error> {
+async fn authenticate(
+  uri: Uri,
+  config: &Configuration,
+  record_store: r2d2::Pool<r2d2_postgres::PostgresConnectionManager>,
+) -> Result<Response<()>, Error> {
   let code = match form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
     .find(|(key, _)| key == "code")
   {
@@ -401,8 +435,34 @@ async fn authenticate(uri: Uri, config: &Configuration) -> Result<Response<()>, 
 
   let user_info = fetch_info(authorization).await.map_err(normalize_error)?;
 
+  let tenant = record_store
+    .get()
+    .map_err(normalize_error)?
+    .query(
+      "select u.id from users as u inner join google_accounts as g on g.user_id = u.id where google_id = $1 limit 1",
+      &[&user_info.sub],
+    )?;
+
+  match tenant.iter().nth(0) {
+    Some(u) => {
+      if let Some(Ok(v)) = u.get_opt::<usize, String>(0) {
+        println!("[debg] found user: {:?}", v);
+      }
+    }
+    None => {
+      println!("[debg] unable to find user, creating");
+      let transaction = make_user(user_info.clone(), record_store);
+      match transaction {
+        Ok(count) => println!("[debug] successfully created user, rows: {:?}", count),
+        Err(e) => println!("[warning] failed creating user: {:?}", e),
+      };
+
+      println!("[debg] user is persisted");
+    }
+  };
+
   let redis_client =
-    redis::Client::open(config.krumi.session_store.redis_uri.as_str()).map_err(normalize_error)?;
+    redis::Client::open(config.session_store.redis_uri.as_str()).map_err(normalize_error)?;
 
   let mut con = redis_client.get_connection().map_err(normalize_error)?;
 
@@ -460,7 +520,7 @@ fn identify(
   println!("[debug] finding session id {}", session_id);
 
   let redis_client =
-    redis::Client::open(config.krumi.session_store.redis_uri.as_str()).map_err(normalize_error)?;
+    redis::Client::open(config.session_store.redis_uri.as_str()).map_err(normalize_error)?;
 
   let foo: String = redis::cmd("GET")
     .arg(format!("session:{}", session_id))
@@ -527,7 +587,7 @@ async fn forget(head: &RequestHead, config: &Configuration) -> Result<Response<(
   let session_id = token_data.claims.id;
 
   let redis_client =
-    redis::Client::open(config.krumi.session_store.redis_uri.as_str()).map_err(normalize_error)?;
+    redis::Client::open(config.session_store.redis_uri.as_str()).map_err(normalize_error)?;
 
   println!("[debug] deleting session {}", session_id);
 
@@ -539,11 +599,17 @@ async fn forget(head: &RequestHead, config: &Configuration) -> Result<Response<(
   redirect(&config.krumi.auth_uri)
 }
 
-async fn handle<T>(stream: TcpStream, config: T) -> Result<(), Error>
+async fn handle<T>(
+  stream: TcpStream,
+  configuration: T,
+  record_store: r2d2::Pool<r2d2_postgres::PostgresConnectionManager>,
+) -> Result<(), Error>
 where
   T: std::convert::AsRef<Configuration>,
 {
-  let head = match read_head(&stream, config.as_ref()).await {
+  let config = configuration.as_ref();
+
+  let head = match read_head(&stream, config).await {
     Ok(v) => v,
     Err(e) => {
       println!("[warning] unable to parse headers: {:?}", e);
@@ -554,26 +620,26 @@ where
   match (head.method.clone(), head.uri.path()) {
     (Method::OPTIONS, _) => {
       println!("[debug] preflight request for {:?}", head.uri);
-      match preflight().and_then(|r| with_cors(config.as_ref(), r)) {
+      match preflight().and_then(|r| with_cors(config, r)) {
         Ok(response) => write_response(&stream, response).await?,
         Err(e) => write_error(&stream, e).await?,
       }
     }
-    (Method::GET, "/auth/redirect") => match login(config.as_ref()) {
+    (Method::GET, "/auth/redirect") => match login(config) {
       Ok(response) => write_response(&stream, response).await?,
       Err(e) => write_error(&stream, e).await?,
     },
-    (Method::GET, "/auth/callback") => match authenticate(head.uri, config.as_ref()).await {
+    (Method::GET, "/auth/callback") => match authenticate(head.uri, config, record_store).await {
       Ok(response) => write_response(&stream, response).await?,
       Err(e) => write_error(&stream, e).await?,
     },
-    (Method::GET, "/auth/forget") => match forget(&head, config.as_ref()).await {
+    (Method::GET, "/auth/forget") => match forget(&head, config).await {
       Ok(response) => write_response(&stream, response).await?,
       Err(e) => write_error(&stream, e).await?,
     },
     (Method::GET, "/auth/identify") => {
       println!("[debug] identify request for {:?}", head.uri);
-      match identify(&head, config.as_ref()).and_then(|r| with_cors(config.as_ref(), r)) {
+      match identify(&head, config).and_then(|r| with_cors(config, r)) {
         Ok(response) => write_response(&stream, response).await?,
         Err(e) => write_error(&stream, e).await?,
       }
@@ -600,18 +666,23 @@ pub async fn run(configuration: Configuration) -> Result<(), Box<dyn std::error:
   let listener = TcpListener::bind(&configuration.addr).await?;
   let mut incoming = listener.incoming();
   let (sender, receiver) = channel::<String>();
+  let db = r2d2::Pool::builder()
+    .connection_timeout(std::time::Duration::new(1, 0))
+    .build(PostgresConnectionManager::new(
+      configuration.record_store.postgres_uri.as_str(),
+      TlsMode::None,
+    )?)?;
+
+  let shared_config = Arc::from(configuration);
+
   let broker = task::spawn(broker_loop(receiver));
-  let shared_config = Arc::from(configuration.clone());
 
   while let Some(stream) = incoming.next().await {
     match stream {
       Ok(connection) => {
-        println!(
-          "[debug] connection received w/ nodelay[{:?}]",
-          connection.nodelay()
-        );
         let local_config = shared_config.clone();
-        task::spawn(handle(connection, local_config));
+        let local_db = db.clone();
+        task::spawn(handle(connection, local_config, local_db));
       }
       Err(e) => {
         println!("[warning] invalid connection: {:?}", e);
