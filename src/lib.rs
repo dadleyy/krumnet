@@ -451,13 +451,7 @@ async fn authenticate(
     }
     None => {
       println!("[debg] unable to find user, creating");
-      let transaction = make_user(user_info.clone(), record_store);
-      match transaction {
-        Ok(count) => println!("[debug] successfully created user, rows: {:?}", count),
-        Err(e) => println!("[warning] failed creating user: {:?}", e),
-      };
-
-      println!("[debg] user is persisted");
+      make_user(user_info.clone(), record_store)?;
     }
   };
 
