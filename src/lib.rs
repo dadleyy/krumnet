@@ -6,7 +6,6 @@ extern crate isahc;
 extern crate jsonwebtoken as jwt;
 extern crate r2d2;
 extern crate r2d2_postgres;
-extern crate redis;
 extern crate serde;
 extern crate serde_json;
 extern crate url;
@@ -455,13 +454,16 @@ async fn authenticate(
     }
   };
 
+  /*
   let redis_client =
     redis::Client::open(config.session_store.redis_uri.as_str()).map_err(normalize_error)?;
 
   let mut con = redis_client.get_connection().map_err(normalize_error)?;
+  */
 
   let id = uuid::Uuid::new_v4();
 
+  /*
   redis::cmd("PING")
     .query(&mut con)
     .map_err(normalize_error)?;
@@ -473,6 +475,7 @@ async fn authenticate(
     .arg(data)
     .query(&mut con)
     .map_err(normalize_error)?;
+  */
 
   let exp = (std::time::SystemTime::now() + std::time::Duration::from_secs(60 * 60 * 24))
     .duration_since(std::time::UNIX_EPOCH)
@@ -513,6 +516,7 @@ fn identify(
 
   println!("[debug] finding session id {}", session_id);
 
+  /*
   let redis_client =
     redis::Client::open(config.session_store.redis_uri.as_str()).map_err(normalize_error)?;
 
@@ -522,13 +526,14 @@ fn identify(
     .map_err(normalize_error)?;
 
   let user_info: UserInfoPayload = serde_json::from_str(foo.as_str()).map_err(normalize_error)?;
+  */
 
   println!("[debug] session info lookup complete; found user info");
 
   Response::builder()
     .status(StatusCode::OK)
     .header(http::header::CONTENT_TYPE, "application/json")
-    .body(user_info)
+    .body(UserInfoPayload::default())
     .map_err(normalize_error)
 }
 
@@ -580,6 +585,7 @@ async fn forget(head: &RequestHead, config: &Configuration) -> Result<Response<(
 
   let session_id = token_data.claims.id;
 
+  /*
   let redis_client =
     redis::Client::open(config.session_store.redis_uri.as_str()).map_err(normalize_error)?;
 
@@ -589,6 +595,7 @@ async fn forget(head: &RequestHead, config: &Configuration) -> Result<Response<(
     .arg(format!("session:{}", session_id))
     .query(&mut redis_client.get_connection().map_err(normalize_error)?)
     .map_err(normalize_error)?;
+  */
 
   redirect(&config.krumi.auth_uri)
 }
