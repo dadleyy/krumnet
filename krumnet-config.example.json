@@ -4,7 +4,7 @@
     "auth_uri": "http://0.0.0.0:8081/auth/callback",
     "cors_origin": "http://0.0.0.0:8081",
     "session_store": {
-      "redis_uri": "redis://0.0.0.0:6379"
+      "redis_uri": "0.0.0.0:6379"
     }
   },
   "google": {

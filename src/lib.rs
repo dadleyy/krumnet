@@ -4,6 +4,7 @@ extern crate chrono_tz;
 extern crate http;
 extern crate isahc;
 extern crate jsonwebtoken as jwt;
+extern crate kramer;
 extern crate r2d2;
 extern crate r2d2_postgres;
 extern crate serde;
@@ -184,16 +185,22 @@ where
     .await
     .map_err(normalize_error)?;
 
-  let mut headers = bits.headers;
+  let ch = format!("{}: close\r\n", header::CONNECTION);
+  writer.write(ch.as_bytes()).await.map_err(normalize_error)?;
 
-  headers.insert(
-    header::CONNECTION,
-    HeaderValue::from_str("close").map_err(normalize_error)?,
+  let ct = format!("{}: {}\r\n", http::header::CONTENT_TYPE, "application/json");
+  writer.write(ct.as_bytes()).await.map_err(normalize_error)?;
+
+  let dh = format!(
+    "{}: {}\r\n",
+    http::header::DATE,
+    Utc::now()
+      .with_timezone(&chrono_tz::GMT)
+      .format("%a, %e %b %Y %H:%M:%S GMT")
+      .to_string()
   );
 
-  if let Ok(value) = date() {
-    headers.insert(header::DATE, value);
-  }
+  writer.write(dh.as_bytes()).await.map_err(normalize_error)?;
 
   let mut data = String::new();
 
@@ -201,13 +208,13 @@ where
     data = serialized;
   }
 
-  if headers.get(header::CONTENT_LENGTH).is_none() {
-    let value =
-      HeaderValue::from_str(format!("{}", data.len()).as_str()).map_err(normalize_error)?;
-    headers.insert(header::CONTENT_LENGTH, value);
+  if bits.headers.get(header::CONTENT_LENGTH).is_none() {
+    let h = format!("{}: {}\r\n", header::CONTENT_LENGTH, data.len());
+    writer.write(h.as_bytes()).await.map_err(normalize_error)?;
   }
 
-  let head = headers
+  let head = bits
+    .headers
     .iter()
     .map(|(key, value)| value.to_str().map(|v| format!("{}: {}", key, v)))
     .flatten()
@@ -227,20 +234,6 @@ where
     .map_err(normalize_error)?;
 
   writer.flush().await
-}
-
-fn date() -> Result<HeaderValue, Error> {
-  HeaderValue::from_str(
-    format!(
-      "{}",
-      Utc::now()
-        .with_timezone(&chrono_tz::GMT)
-        .format("%a, %e %b %Y %H:%M:%S GMT")
-        .to_string()
-    )
-    .as_str(),
-  )
-  .or(Err(Error::from(ErrorKind::InvalidData)))
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
@@ -454,28 +447,21 @@ async fn authenticate(
     }
   };
 
-  /*
-  let redis_client =
-    redis::Client::open(config.session_store.redis_uri.as_str()).map_err(normalize_error)?;
-
-  let mut con = redis_client.get_connection().map_err(normalize_error)?;
-  */
-
+  println!(
+    "[debug] connecting to redis - {}",
+    config.session_store.redis_uri.as_str()
+  );
+  let con = std::net::TcpStream::connect(config.session_store.redis_uri.as_str())?;
   let id = uuid::Uuid::new_v4();
-
-  /*
-  redis::cmd("PING")
-    .query(&mut con)
-    .map_err(normalize_error)?;
-
-  let data = serde_json::to_vec(&user_info).map_err(normalize_error)?;
-
-  redis::cmd("SET")
-    .arg(format!("session:{}", id))
-    .arg(data)
-    .query(&mut con)
-    .map_err(normalize_error)?;
-  */
+  let data = serde_json::to_string(&user_info).map_err(normalize_error)?;
+  let set = kramer::StringCommand::Set(
+    kramer::Arity::One((format!("session:{}", id), data)),
+    None,
+    kramer::Insertion::Always,
+  );
+  println!("[debug] sending session set cmd");
+  let response = kramer::execute(con, set).map_err(normalize_error)?;
+  println!("[debug] command successful, response: {:?}", response);
 
   let exp = (std::time::SystemTime::now() + std::time::Duration::from_secs(60 * 60 * 24))
     .duration_since(std::time::UNIX_EPOCH)
@@ -516,24 +502,24 @@ fn identify(
 
   println!("[debug] finding session id {}", session_id);
 
-  /*
-  let redis_client =
-    redis::Client::open(config.session_store.redis_uri.as_str()).map_err(normalize_error)?;
+  let con = std::net::TcpStream::connect(config.session_store.redis_uri.as_str())?;
+  let finder =
+    kramer::StringCommand::Get::<_, bool>(kramer::Arity::One(format!("session:{}", session_id)));
+  let response = kramer::execute(con, finder).map_err(normalize_error)?;
 
-  let foo: String = redis::cmd("GET")
-    .arg(format!("session:{}", session_id))
-    .query(&mut redis_client.get_connection().map_err(normalize_error)?)
-    .map_err(normalize_error)?;
-
-  let user_info: UserInfoPayload = serde_json::from_str(foo.as_str()).map_err(normalize_error)?;
-  */
+  let user_info = match response {
+    kramer::Response::Item(kramer::ResponseValue::String(value)) => {
+      println!("[debug] pulled session data, {}", value.as_str());
+      serde_json::from_str(value.as_str()).map_err(normalize_error)?
+    }
+    _ => return Err(Error::new(ErrorKind::Other, "cannot connect to redis")),
+  };
 
   println!("[debug] session info lookup complete; found user info");
 
   Response::builder()
     .status(StatusCode::OK)
-    .header(http::header::CONTENT_TYPE, "application/json")
-    .body(UserInfoPayload::default())
+    .body(user_info)
     .map_err(normalize_error)
 }
 
@@ -585,17 +571,13 @@ async fn forget(head: &RequestHead, config: &Configuration) -> Result<Response<(
 
   let session_id = token_data.claims.id;
 
-  /*
-  let redis_client =
-    redis::Client::open(config.session_store.redis_uri.as_str()).map_err(normalize_error)?;
+  let con = std::net::TcpStream::connect(config.session_store.redis_uri.as_str())?;
 
-  println!("[debug] deleting session {}", session_id);
-
-  redis::cmd("DEL")
-    .arg(format!("session:{}", session_id))
-    .query(&mut redis_client.get_connection().map_err(normalize_error)?)
-    .map_err(normalize_error)?;
-  */
+  kramer::execute(
+    con,
+    kramer::Command::Del::<_, bool>(kramer::Arity::One(format!("session:{}", session_id))),
+  )
+  .map_err(normalize_error)?;
 
   redirect(&config.krumi.auth_uri)
 }
