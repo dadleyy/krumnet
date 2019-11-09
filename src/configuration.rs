@@ -1,10 +1,16 @@
 extern crate serde;
 
+use crate::constants::{
+  google_auth_url, GOOGLE_AUTH_CLIENT_ID_KEY, GOOGLE_AUTH_REDIRECT_URI_KEY,
+  GOOGLE_AUTH_RESPONSE_TYPE_KEY, GOOGLE_AUTH_RESPONSE_TYPE_VALUE, GOOGLE_AUTH_SCOPE_KEY,
+  GOOGLE_AUTH_SCOPE_VALUE,
+};
 use serde::Deserialize;
 use std::env::var_os;
 use std::fs::read;
 use std::io::{Error, ErrorKind};
 use std::str::FromStr;
+use url::Url;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Configuration {
@@ -25,6 +31,28 @@ pub struct Configuration {
 
   #[serde(default)]
   pub session_secret: String,
+}
+
+impl Configuration {
+  pub fn login_url(&self) -> Result<String, Error> {
+    let url = google_auth_url();
+    let mut location = url
+      .parse::<Url>()
+      .map_err(|e| Error::new(ErrorKind::Other, e))?;
+
+    location
+      .query_pairs_mut()
+      .clear()
+      .append_pair(
+        GOOGLE_AUTH_RESPONSE_TYPE_KEY,
+        GOOGLE_AUTH_RESPONSE_TYPE_VALUE,
+      )
+      .append_pair(GOOGLE_AUTH_CLIENT_ID_KEY, &self.google.client_id)
+      .append_pair(GOOGLE_AUTH_REDIRECT_URI_KEY, &self.google.redirect_uri)
+      .append_pair(GOOGLE_AUTH_SCOPE_KEY, GOOGLE_AUTH_SCOPE_VALUE);
+
+    Ok(format!("{}", location.as_str()))
+  }
 }
 
 impl Default for Configuration {
