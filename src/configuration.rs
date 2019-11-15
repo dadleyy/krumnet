@@ -1,16 +1,17 @@
 extern crate serde;
 
-use crate::constants::{
-  google_auth_url, GOOGLE_AUTH_CLIENT_ID_KEY, GOOGLE_AUTH_REDIRECT_URI_KEY,
-  GOOGLE_AUTH_RESPONSE_TYPE_KEY, GOOGLE_AUTH_RESPONSE_TYPE_VALUE, GOOGLE_AUTH_SCOPE_KEY,
-  GOOGLE_AUTH_SCOPE_VALUE,
-};
 use serde::Deserialize;
 use std::env::var_os;
 use std::fs::read;
 use std::io::{Error, ErrorKind};
 use std::str::FromStr;
 use url::Url;
+
+use crate::constants::{
+  google_auth_url, GOOGLE_AUTH_CLIENT_ID_KEY, GOOGLE_AUTH_REDIRECT_URI_KEY,
+  GOOGLE_AUTH_RESPONSE_TYPE_KEY, GOOGLE_AUTH_RESPONSE_TYPE_VALUE, GOOGLE_AUTH_SCOPE_KEY,
+  GOOGLE_AUTH_SCOPE_VALUE,
+};
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Configuration {

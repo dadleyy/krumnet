@@ -20,6 +20,9 @@ pub mod constants;
 pub mod configuration;
 use configuration::Configuration;
 
+mod persistence;
+use persistence::RecordStore;
+
 mod routes;
 use routes::auth;
 
@@ -41,12 +44,20 @@ where
     .map_err(|e| Error::new(ErrorKind::Other, e))
 }
 
-async fn write<C, D>(mut writer: C, data: Response<D>) -> Result<(), Error>
+async fn write<C, D>(mut writer: C, data: Result<Response<Option<D>>, Error>) -> Result<(), Error>
 where
   C: AsyncWrite + Unpin,
   D: Serialize,
 {
-  let (top, _) = data.into_parts();
+  let (top, _) = data
+    .unwrap_or(
+      Response::builder()
+        .status(500)
+        .body(None)
+        .map_err(|e| Error::new(ErrorKind::Other, e))?,
+    )
+    .into_parts();
+
   let reason = top.status.canonical_reason().unwrap_or_default();
   let headers = top
     .headers
@@ -65,10 +76,11 @@ where
   writer.write(serialized.as_bytes()).await.map(|_| ())
 }
 
-async fn handle<T, C>(mut connection: T, config: C) -> Result<(), Error>
+async fn handle<T, C, R>(mut connection: T, config: C, records: R) -> Result<(), Error>
 where
   T: AsyncRead + AsyncWrite + Unpin,
   C: std::ops::Deref<Target = Configuration>,
+  R: std::ops::Deref<Target = RecordStore>,
 {
   let head = recognize(&mut connection).await?;
   match head.path() {
@@ -79,14 +91,14 @@ where
 
       match (head.method(), uri.path()) {
         (Some(RequestMethod::GET), "/auth/callback") => {
-          let res = auth::callback(uri, &config).await?;
+          let res = auth::callback(uri, &config, &records).await;
           write(&mut connection, res).await
         }
         (Some(RequestMethod::GET), "/auth/redirect") => {
           let login_url = config.login_url()?;
-          write(&mut connection, redirect(login_url)?).await
+          write(&mut connection, redirect(login_url)).await
         }
-        _ => write(&mut connection, not_found()?).await,
+        _ => write(&mut connection, not_found()).await,
       }
     }
     None => Ok(()),
@@ -97,12 +109,14 @@ pub async fn run(configuration: Configuration) -> Result<(), Error> {
   let listener = TcpListener::bind(&configuration.addr).await?;
   let mut incoming = listener.incoming();
   let config = Arc::from(configuration);
+  let records = Arc::new(RecordStore::open(config.clone())?);
 
   while let Some(stream) = incoming.next().await {
     match stream {
       Ok(connection) => {
         let config = config.clone();
-        task::spawn(handle(connection, config));
+        let records = records.clone();
+        task::spawn(handle(connection, config, records));
       }
       Err(e) => {
         println!("[warning] invalid connection: {:?}", e);
