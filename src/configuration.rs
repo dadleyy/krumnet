@@ -5,13 +5,6 @@ use std::env::var_os;
 use std::fs::read;
 use std::io::{Error, ErrorKind};
 use std::str::FromStr;
-use url::Url;
-
-use crate::constants::{
-  google_auth_url, GOOGLE_AUTH_CLIENT_ID_KEY, GOOGLE_AUTH_REDIRECT_URI_KEY,
-  GOOGLE_AUTH_RESPONSE_TYPE_KEY, GOOGLE_AUTH_RESPONSE_TYPE_VALUE, GOOGLE_AUTH_SCOPE_KEY,
-  GOOGLE_AUTH_SCOPE_VALUE,
-};
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Configuration {
@@ -29,31 +22,6 @@ pub struct Configuration {
 
   #[serde(default)]
   pub addr: String,
-
-  #[serde(default)]
-  pub session_secret: String,
-}
-
-impl Configuration {
-  pub fn login_url(&self) -> Result<String, Error> {
-    let url = google_auth_url();
-    let mut location = url
-      .parse::<Url>()
-      .map_err(|e| Error::new(ErrorKind::Other, e))?;
-
-    location
-      .query_pairs_mut()
-      .clear()
-      .append_pair(
-        GOOGLE_AUTH_RESPONSE_TYPE_KEY,
-        GOOGLE_AUTH_RESPONSE_TYPE_VALUE,
-      )
-      .append_pair(GOOGLE_AUTH_CLIENT_ID_KEY, &self.google.client_id)
-      .append_pair(GOOGLE_AUTH_REDIRECT_URI_KEY, &self.google.redirect_uri)
-      .append_pair(GOOGLE_AUTH_SCOPE_KEY, GOOGLE_AUTH_SCOPE_VALUE);
-
-    Ok(format!("{}", location.as_str()))
-  }
 }
 
 impl Default for Configuration {
@@ -66,7 +34,6 @@ impl Default for Configuration {
       addr: String::from("0.0.0.0:8080"),
       session_store: SessionStoreConfiguration::default(),
       record_store: RecordStoreConfiguration::default(),
-      session_secret: format!("{}", uuid::Uuid::new_v4()),
     }
   }
 }
@@ -147,4 +114,5 @@ pub struct RecordStoreConfiguration {
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct SessionStoreConfiguration {
   pub redis_uri: String,
+  pub secret: String,
 }

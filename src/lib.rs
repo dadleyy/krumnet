@@ -23,6 +23,9 @@ use configuration::Configuration;
 mod persistence;
 use persistence::RecordStore;
 
+mod session;
+use session::SessionStore;
+
 mod routes;
 use routes::auth;
 
@@ -49,6 +52,10 @@ where
   C: AsyncWrite + Unpin,
   D: Serialize,
 {
+  if let Err(e) = &data {
+    println!("[warning] attempted to write a failed handler: {:?}", e);
+  }
+
   let (top, _) = data
     .unwrap_or(
       Response::builder()
@@ -76,10 +83,10 @@ where
   writer.write(serialized.as_bytes()).await.map(|_| ())
 }
 
-async fn handle<T, C, R>(mut connection: T, config: C, records: R) -> Result<(), Error>
+async fn handle<T, S, R>(mut connection: T, session: S, records: R) -> Result<(), Error>
 where
   T: AsyncRead + AsyncWrite + Unpin,
-  C: std::ops::Deref<Target = Configuration>,
+  S: std::ops::Deref<Target = SessionStore>,
   R: std::ops::Deref<Target = RecordStore>,
 {
   let head = recognize(&mut connection).await?;
@@ -89,14 +96,21 @@ where
         .parse::<Uri>()
         .map_err(|e| Error::new(ErrorKind::Other, e))?;
 
+      let auth = head.find_header("Authorization");
+
+      println!("[debug] request - {} {:?}", uri.path(), auth);
+
       match (head.method(), uri.path()) {
         (Some(RequestMethod::GET), "/auth/callback") => {
-          let res = auth::callback(uri, &config, &records).await;
+          let res = auth::callback(uri, &session, &records).await;
+          write(&mut connection, res).await
+        }
+        (Some(RequestMethod::GET), "/auth/identify") => {
+          let res = auth::identify().await;
           write(&mut connection, res).await
         }
         (Some(RequestMethod::GET), "/auth/redirect") => {
-          let login_url = config.login_url()?;
-          write(&mut connection, redirect(login_url)).await
+          write(&mut connection, redirect(session.login_url())).await
         }
         _ => write(&mut connection, not_found()).await,
       }
@@ -108,15 +122,24 @@ where
 pub async fn run(configuration: Configuration) -> Result<(), Error> {
   let listener = TcpListener::bind(&configuration.addr).await?;
   let mut incoming = listener.incoming();
-  let config = Arc::from(configuration);
-  let records = Arc::new(RecordStore::open(config.clone())?);
 
+  println!("[debug] connecting to record store");
+  let records = Arc::new(RecordStore::open(&configuration)?);
+
+  println!("[debug] connecting to session store");
+  let session = Arc::new(SessionStore::open(&configuration).await?);
+
+  println!("[debug] accepting incoming tcp streams");
   while let Some(stream) = incoming.next().await {
     match stream {
       Ok(connection) => {
-        let config = config.clone();
         let records = records.clone();
-        task::spawn(handle(connection, config, records));
+        let session = session.clone();
+        task::spawn(async {
+          if let Err(e) = handle(connection, session, records).await {
+            println!("[warning] unable to handle connection: {:?}", e);
+          }
+        });
       }
       Err(e) => {
         println!("[warning] invalid connection: {:?}", e);

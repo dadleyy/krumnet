@@ -8,9 +8,12 @@ use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind};
 use url::form_urlencoded;
 
-use crate::configuration::Configuration;
+use crate::configuration::GoogleCredentials;
 use crate::constants;
 use crate::persistence::RecordStore;
+use crate::session::SessionStore;
+
+const FIND_USER: &'static str = include_str!("data-store/find_user.sql");
 
 #[derive(Debug, PartialEq, Deserialize)]
 struct TokenExchangePayload {
@@ -50,14 +53,19 @@ async fn fetch_info(authorization: TokenExchangePayload) -> Result<UserInfoPaylo
   }
 }
 
-async fn exchange_code(code: &str, config: &Configuration) -> Result<TokenExchangePayload, Error> {
+async fn exchange_code(code: &str, session: &SessionStore) -> Result<TokenExchangePayload, Error> {
   let client = isahc::HttpClient::new().map_err(|e| Error::new(ErrorKind::Other, e))?;
+  let GoogleCredentials {
+    client_id,
+    client_secret,
+    redirect_uri,
+  } = session.google();
 
   let encoded: String = form_urlencoded::Serializer::new(String::new())
     .append_pair("code", code)
-    .append_pair("client_id", &config.google.client_id)
-    .append_pair("client_secret", &config.google.client_secret)
-    .append_pair("redirect_uri", &config.google.redirect_uri)
+    .append_pair("client_id", client_id.as_str())
+    .append_pair("client_secret", client_secret.as_str())
+    .append_pair("redirect_uri", redirect_uri.as_str())
     .append_pair("grant_type", "authorization_code")
     .finish();
 
@@ -86,7 +94,10 @@ async fn exchange_code(code: &str, config: &Configuration) -> Result<TokenExchan
   }
 }
 
-fn make_user(details: UserInfoPayload, conn: PooledConnection<Postgres>) -> Result<(), Error> {
+fn make_user(
+  details: &UserInfoPayload,
+  conn: &PooledConnection<Postgres>,
+) -> Result<String, Error> {
   let query = include_str!("data-store/create_user.sql");
   let UserInfoPayload {
     email,
@@ -97,12 +108,26 @@ fn make_user(details: UserInfoPayload, conn: PooledConnection<Postgres>) -> Resu
   conn
     .execute(query, &[&email, &name, &email, &name, &sub])
     .map_err(|e| Error::new(ErrorKind::Other, e))?;
-  Ok(())
+
+  let tenant = conn.query(FIND_USER, &[&sub])?;
+  match tenant.iter().nth(0) {
+    Some(row) => match row.get_opt::<_, String>(0) {
+      Some(Ok(id)) => Ok(id),
+      _ => Err(Error::new(
+        ErrorKind::Other,
+        "Found matching row, but unable to parse",
+      )),
+    },
+    _ => Err(Error::new(
+      ErrorKind::Other,
+      "Unable to find previously inserted user",
+    )),
+  }
 }
 
 pub async fn callback(
   uri: Uri,
-  config: &Configuration,
+  session: &SessionStore,
   records: &RecordStore,
 ) -> Result<Response<Option<u8>>, Error> {
   let query = uri.query().unwrap_or_default().as_bytes();
@@ -116,7 +141,7 @@ pub async fn callback(
     }
   };
 
-  let payload = match exchange_code(&code, config).await {
+  let payload = match exchange_code(&code, session).await {
     Ok(payload) => payload,
     Err(e) => {
       println!("[warning] unable ot exchange code: {}", e);
@@ -140,17 +165,36 @@ pub async fn callback(
 
   let conn = records.get()?;
   println!("[debug] loaded user info: {:?}", profile);
-  let find_user = include_str!("data-store/find_user.sql");
-  let tenant = conn.query(find_user, &[&profile.sub])?;
 
-  match tenant.iter().nth(0) {
-    Some(_) => println!("[debug] found matching user"),
+  let tenant = conn.query(FIND_USER, &[&profile.sub])?;
+
+  let uid = match tenant.iter().nth(0) {
+    Some(row) => match row.get_opt::<_, String>(0) {
+      Some(Ok(id)) => id,
+      _ => {
+        return Builder::new()
+          .status(400)
+          .body(None)
+          .map_err(|e| Error::new(ErrorKind::Other, e));
+      }
+    },
     None => {
       println!("[debug] no matching user, creating");
-      make_user(profile, conn)?;
+      make_user(&profile, &conn)?
     }
-  }
+  };
 
+  let token = session.create(&uid).await?;
+  println!("[debug] creating session for user id: {}", token);
+
+  Builder::new()
+    .status(301)
+    .header("Location", "https://google.com")
+    .body(None)
+    .map_err(|e| Error::new(ErrorKind::Other, e))
+}
+
+pub async fn identify() -> Result<Response<Option<String>>, Error> {
   Builder::new()
     .status(200)
     .body(None)

@@ -2,10 +2,14 @@
   "addr": "0.0.0.0:8080",
   "krumi": {
     "auth_uri": "http://0.0.0.0:8081/auth/callback",
-    "cors_origin": "http://0.0.0.0:8081",
-    "session_store": {
-      "redis_uri": "0.0.0.0:6379"
-    }
+    "cors_origin": "http://0.0.0.0:8081"
+  },
+  "record_store": {
+    "postgres_uri": "postgres://postgres@0.0.0.0:8099/krumnet"
+  },
+  "session_store": {
+    "redis_uri": "redis://0.0.0.0:6379",
+    "secret": "krumnet"
   },
   "google": {
     "client_id": "...",
