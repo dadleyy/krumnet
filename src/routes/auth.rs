@@ -14,6 +14,7 @@ use crate::persistence::RecordStore;
 use crate::session::SessionStore;
 
 const FIND_USER: &'static str = include_str!("data-store/find_user.sql");
+const CREATE_USER: &'static str = include_str!("data-store/create_user.sql");
 
 #[derive(Debug, PartialEq, Deserialize)]
 struct TokenExchangePayload {
@@ -98,7 +99,6 @@ fn make_user(
   details: &UserInfoPayload,
   conn: &PooledConnection<Postgres>,
 ) -> Result<String, Error> {
-  let query = include_str!("data-store/create_user.sql");
   let UserInfoPayload {
     email,
     name,
@@ -106,7 +106,7 @@ fn make_user(
     picture: _,
   } = details;
   conn
-    .execute(query, &[&email, &name, &email, &name, &sub])
+    .execute(CREATE_USER, &[&email, &name, &email, &name, &sub])
     .map_err(|e| Error::new(ErrorKind::Other, e))?;
 
   let tenant = conn.query(FIND_USER, &[&sub])?;
