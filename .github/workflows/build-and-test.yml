@@ -20,7 +20,7 @@ jobs:
       - name: check-ready
         env:
           POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
-        run: pg_isready --username postgres --host postgres --port $POSTGRES_PORT
+        run: pg_isready --username postgres --host postgres --port $POSTGRES_PORT --timeout 10
       - name: create-db
         run: createdb --port=5432 --host=postgres krumnet-test
       - name: install-beta
