@@ -4,7 +4,7 @@ use std::time::SystemTime;
 use async_std::net::TcpStream;
 use async_std::sync::RwLock;
 
-use jsonwebtoken::{decode, encode, EncodingKey, Header};
+use jsonwebtoken::{encode, EncodingKey, Header};
 use kramer::{execute, Arity, Insertion, StringCommand};
 use log::info;
 use serde::{Deserialize, Serialize};
