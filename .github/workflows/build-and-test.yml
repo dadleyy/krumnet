@@ -20,9 +20,9 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - name: check-ready
-        run: pg_isready
+        run: pg_isready --port=5432 --host=postgres
       - name: create-db
-        run: createdb krumnet-test
+        run: createdb --port=5432 --host=postgres krumnet-test
       - name: install-beta
         run: rustup toolchain install beta
       - name: use-beta
