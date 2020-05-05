@@ -1,3 +1,5 @@
+/* This file will create the database schema from scratch, deleting any existing data.
+ */
 create extension if not exists "uuid-ossp";
 
 drop table if exists google_accounts cascade;

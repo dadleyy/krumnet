@@ -2,12 +2,14 @@ use http::response::{Builder, Response};
 use http::status::StatusCode;
 use http::Uri;
 use http::{Method, Request};
+use log::info;
 use r2d2::PooledConnection;
 use r2d2_postgres::PostgresConnectionManager as Postgres;
 use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind};
 use url::form_urlencoded;
 
+use crate::authorization::AuthorizationUrls;
 use crate::configuration::GoogleCredentials;
 use crate::constants;
 use crate::persistence::RecordStore;
@@ -29,6 +31,8 @@ struct UserInfoPayload {
   picture: String,
 }
 
+// Given the token returned from an oauth code exchange, load the user's information from the
+// google api.
 async fn fetch_info(authorization: TokenExchangePayload) -> Result<UserInfoPayload, Error> {
   let client = isahc::HttpClient::new().map_err(|e| Error::new(ErrorKind::Other, e))?;
   let mut request = Request::builder();
@@ -54,13 +58,21 @@ async fn fetch_info(authorization: TokenExchangePayload) -> Result<UserInfoPaylo
   }
 }
 
-async fn exchange_code(code: &str, session: &SessionStore) -> Result<TokenExchangePayload, Error> {
+// Given an oauth code returned from google, attempt to exchange the code for a real auth token
+// that will provide access to user information.
+async fn exchange_code(
+  code: &str,
+  authorization: &AuthorizationUrls,
+) -> Result<TokenExchangePayload, Error> {
   let client = isahc::HttpClient::new().map_err(|e| Error::new(ErrorKind::Other, e))?;
-  let GoogleCredentials {
-    client_id,
-    client_secret,
-    redirect_uri,
-  } = session.google();
+  let (
+    exchange_url,
+    GoogleCredentials {
+      client_id,
+      client_secret,
+      redirect_uri,
+    },
+  ) = &authorization.exchange;
 
   let encoded: String = form_urlencoded::Serializer::new(String::new())
     .append_pair("code", code)
@@ -70,7 +82,7 @@ async fn exchange_code(code: &str, session: &SessionStore) -> Result<TokenExchan
     .append_pair("grant_type", "authorization_code")
     .finish();
 
-  match client.post(constants::google_token_url(), encoded) {
+  match client.post(exchange_url, encoded) {
     Ok(mut response) if response.status() == StatusCode::OK => {
       let body = response.body_mut();
       let payload = match serde_json::from_reader(body) {
@@ -95,6 +107,8 @@ async fn exchange_code(code: &str, session: &SessionStore) -> Result<TokenExchan
   }
 }
 
+// Given user information loaded from the api, attempt to save the information into the persistence
+// engine.
 fn make_user(
   details: &UserInfoPayload,
   conn: &PooledConnection<Postgres>,
@@ -125,10 +139,41 @@ fn make_user(
   }
 }
 
+// Attempt to find a user based on the google account id returned. If none is found, attempt to
+// find by the email address and make sure to backfill the google account. If there is still no
+// matching user information, attempt to create a new user and google account.
+fn find_or_create_user(profile: &UserInfoPayload, records: &RecordStore) -> Result<String, Error> {
+  let conn = records.get()?;
+  info!("loaded user info: {:?}", profile);
+
+  let tenant = conn.query(FIND_USER, &[&profile.sub])?;
+
+  match tenant.iter().nth(0) {
+    Some(row) => match row.get_opt::<_, String>(0) {
+      Some(Ok(id)) => {
+        info!("found existing user {}", id);
+        Ok(id)
+      }
+      _ => Err(Error::new(
+        ErrorKind::Other,
+        "Unable to parse a valid id from matching row",
+      )),
+    },
+    None => {
+      info!("no matching user, creating");
+      make_user(&profile, &conn)
+    }
+  }
+}
+
+// This is the route handler that is used as the redirect uri of the google client. It is
+// responsible for receiving the code from the successful oauth prompt and redirecting the user to
+// the krumpled ui.
 pub async fn callback(
   uri: Uri,
   session: &SessionStore,
   records: &RecordStore,
+  authorization: &AuthorizationUrls,
 ) -> Result<Response<Option<u8>>, Error> {
   let query = uri.query().unwrap_or_default().as_bytes();
   let code = match form_urlencoded::parse(query).find(|(key, _)| key == "code") {
@@ -141,10 +186,10 @@ pub async fn callback(
     }
   };
 
-  let payload = match exchange_code(&code, session).await {
+  let payload = match exchange_code(&code, authorization).await {
     Ok(payload) => payload,
     Err(e) => {
-      println!("[warning] unable ot exchange code: {}", e);
+      info!("[warning] unable ot exchange code: {}", e);
       return Builder::new()
         .status(404)
         .body(None)
@@ -155,7 +200,7 @@ pub async fn callback(
   let profile = match fetch_info(payload).await {
     Ok(info) => info,
     Err(e) => {
-      println!("[warning] unable to fetch user info: {}", e);
+      info!("[warning] unable to fetch user info: {}", e);
       return Builder::new()
         .status(404)
         .body(None)
@@ -163,33 +208,23 @@ pub async fn callback(
     }
   };
 
-  let conn = records.get()?;
-  println!("[debug] loaded user info: {:?}", profile);
-
-  let tenant = conn.query(FIND_USER, &[&profile.sub])?;
-
-  let uid = match tenant.iter().nth(0) {
-    Some(row) => match row.get_opt::<_, String>(0) {
-      Some(Ok(id)) => id,
-      _ => {
-        return Builder::new()
-          .status(400)
-          .body(None)
-          .map_err(|e| Error::new(ErrorKind::Other, e));
-      }
-    },
-    None => {
-      println!("[debug] no matching user, creating");
-      make_user(&profile, &conn)?
+  let uid = match find_or_create_user(&profile, records) {
+    Ok(id) => id,
+    Err(e) => {
+      info!("[warning] unable to create/find user: {:?}", e);
+      return Builder::new()
+        .status(404)
+        .body(None)
+        .map_err(|e| Error::new(ErrorKind::Other, e));
     }
   };
 
   let token = session.create(&uid).await?;
-  println!("[debug] creating session for user id: {}", token);
+  info!("creating session for user id: {}", token);
 
   Builder::new()
     .status(301)
-    .header("Location", "https://google.com")
+    .header("Location", authorization.callback.clone())
     .body(None)
     .map_err(|e| Error::new(ErrorKind::Other, e))
 }
@@ -199,4 +234,17 @@ pub async fn identify() -> Result<Response<Option<String>>, Error> {
     .status(200)
     .body(None)
     .map_err(|e| Error::new(ErrorKind::Other, e))
+}
+
+#[cfg(test)]
+mod test {
+  use crate::configuration::Configuration;
+  use crate::persistence::RecordStore;
+
+  #[test]
+  fn existing_user_ok() {
+    let config = Configuration::load("krumnet-config.example.json").unwrap();
+    let records = RecordStore::open(&config).unwrap();
+    assert_eq!(true, true);
+  }
 }

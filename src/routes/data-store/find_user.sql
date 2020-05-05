@@ -1,3 +1,4 @@
+/* Find a user based on the google id returned. */
 select u.id
 from users as u
 inner join google_accounts as g

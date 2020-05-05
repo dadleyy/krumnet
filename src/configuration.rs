@@ -1,5 +1,6 @@
 extern crate serde;
 
+use log::info;
 use serde::Deserialize;
 use std::env::var_os;
 use std::fs::read;
@@ -22,6 +23,12 @@ pub struct Configuration {
 
   #[serde(default)]
   pub addr: String,
+}
+
+impl Configuration {
+  pub fn load(source: &str) -> Result<Self, Error> {
+    Configuration::from_str(source)
+  }
 }
 
 impl Default for Configuration {
@@ -49,7 +56,7 @@ impl FromStr for Configuration {
     );
 
     if let Err(e) = &result {
-      println!("[warning] unable to parse '{}': {:?}", source, e);
+      info!("[warning] unable to parse '{}': {:?}", source, e);
     }
 
     result.or(Err(Error::from(ErrorKind::InvalidData)))
@@ -115,4 +122,5 @@ pub struct RecordStoreConfiguration {
 pub struct SessionStoreConfiguration {
   pub redis_uri: String,
   pub secret: String,
+  pub session_prefix: String,
 }

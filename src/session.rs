@@ -1,27 +1,27 @@
-use async_std::net::TcpStream;
-use jsonwebtoken::{decode, encode, Header};
-use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind};
-use url::Url;
+use std::time::SystemTime;
 
-use crate::configuration::{Configuration, GoogleCredentials};
+use async_std::net::TcpStream;
+use async_std::sync::RwLock;
 
-use crate::constants::{
-  google_auth_url, GOOGLE_AUTH_CLIENT_ID_KEY, GOOGLE_AUTH_REDIRECT_URI_KEY,
-  GOOGLE_AUTH_RESPONSE_TYPE_KEY, GOOGLE_AUTH_RESPONSE_TYPE_VALUE, GOOGLE_AUTH_SCOPE_KEY,
-  GOOGLE_AUTH_SCOPE_VALUE,
-};
+use jsonwebtoken::{decode, encode, EncodingKey, Header};
+use kramer::{execute, Arity, Insertion, StringCommand};
+use log::info;
+use serde::{Deserialize, Serialize};
+
+use crate::configuration::Configuration;
 
 pub struct SessionStore {
-  _stream: TcpStream,
-  _login_url: String,
-  _google: GoogleCredentials,
+  _stream: RwLock<TcpStream>,
   _secret: String,
+  _encoding_key: EncodingKey,
+  _session_prefix: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SessionClaims {
   uid: String,
+  created: SystemTime,
 }
 
 impl SessionStore {
@@ -29,37 +29,19 @@ impl SessionStore {
   where
     C: std::ops::Deref<Target = Configuration>,
   {
-    let url = google_auth_url();
-    let mut location = url
-      .parse::<Url>()
-      .map_err(|e| Error::new(ErrorKind::Other, e))?;
-    location
-      .query_pairs_mut()
-      .clear()
-      .append_pair(
-        GOOGLE_AUTH_RESPONSE_TYPE_KEY,
-        GOOGLE_AUTH_RESPONSE_TYPE_VALUE,
-      )
-      .append_pair(GOOGLE_AUTH_CLIENT_ID_KEY, &configuration.google.client_id)
-      .append_pair(
-        GOOGLE_AUTH_REDIRECT_URI_KEY,
-        &configuration.google.redirect_uri,
-      )
-      .append_pair(GOOGLE_AUTH_SCOPE_KEY, GOOGLE_AUTH_SCOPE_VALUE);
-
-    let login_url = format!("{}", location.as_str());
     let stream = TcpStream::connect(configuration.session_store.redis_uri.as_str()).await?;
 
-    println!(
-      "[debug] session store ready with secret: {}",
+    info!(
+      "session store ready with secret: {}",
       configuration.session_store.secret
     );
+    let key = EncodingKey::from_secret(configuration.session_store.secret.as_bytes());
 
     Ok(SessionStore {
-      _stream: stream,
-      _login_url: login_url,
+      _stream: RwLock::new(stream),
+      _session_prefix: configuration.session_store.session_prefix.clone(),
       _secret: configuration.session_store.secret.clone(),
-      _google: configuration.google.clone(),
+      _encoding_key: key,
     })
   }
 
@@ -69,19 +51,17 @@ impl SessionStore {
   {
     let claims = SessionClaims {
       uid: format!("{}", id),
+      created: SystemTime::now(),
     };
-    let token = encode(&Header::default(), &claims, self._secret.as_bytes())
+
+    let token = encode(&Header::default(), &claims, &self._encoding_key)
       .map_err(|e| Error::new(ErrorKind::Other, e))?;
 
-    println!("[debug] creating session for user id: {}", id);
+    let key = format!("{}:{}", self._session_prefix, token);
+    let insertion = StringCommand::Set(Arity::One((&key, &id)), None, Insertion::Always);
+    let mut stream = self._stream.write().await;
+    execute(&mut (*stream), insertion).await?;
+    info!("creating session for user id: {}", id);
     Ok(token)
-  }
-
-  pub fn login_url(&self) -> String {
-    self._login_url.clone()
-  }
-
-  pub fn google(&self) -> GoogleCredentials {
-    self._google.clone()
   }
 }

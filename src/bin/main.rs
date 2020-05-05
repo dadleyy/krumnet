@@ -6,6 +6,7 @@ use gumdrop::{parse_args_default_or_exit, Options as Gumdrop};
 use async_std::task;
 use krumnet::configuration::Configuration;
 use krumnet::run;
+use log::info;
 
 #[derive(Debug, Gumdrop)]
 struct Options {
@@ -17,16 +18,17 @@ struct Options {
 }
 
 fn main() {
+  env_logger::init();
   let opts = parse_args_default_or_exit::<Options>();
 
   if opts.help {
-    println!("{}", Options::usage());
+    info!("{}", Options::usage());
     return;
   }
 
-  println!("[debug] starting server '{:?}'", opts.config.addr);
+  info!("[debug] starting server '{:?}'", opts.config.addr);
 
   if let Err(e) = task::block_on(run(opts.config)) {
-    println!("[error] exiting with error: {:?}", e);
+    info!("[error] exiting with error: {:?}", e);
   }
 }
