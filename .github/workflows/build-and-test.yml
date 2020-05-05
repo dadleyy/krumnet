@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - name: pg-packages
-        run: apt-get -y install libpq-dev postgresql-client
+        run: apt-get -y install libpq-dev
       - name: install-beta
         run: rustup toolchain install beta
       - name: use-beta
