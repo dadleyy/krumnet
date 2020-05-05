@@ -42,7 +42,7 @@ version = "^1.0"
 features = ["derive"]
 
 [dev-dependencies]
-mockito = "^0.21"
+mockito = "^0.25"
 
 [profile.release]
 codegen-units = 1

@@ -243,8 +243,10 @@ mod test {
 
   #[test]
   fn existing_user_ok() {
-    let config = Configuration::load("krumnet-config.example.json").unwrap();
-    let records = RecordStore::open(&config).unwrap();
-    assert_eq!(true, true);
+    let config = Configuration::load("krumnet-config.example.json");
+    assert!(config.is_ok());
+    let unwrapped = config.unwrap();
+    let records = RecordStore::open(&unwrapped);
+    assert!(records.is_ok());
   }
 }
