@@ -15,7 +15,7 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v1
-      - name: pg-dev
+      - name: pg-dev postgresql-client-11
         run: sudo apt-get -y install libpq-dev
       - name: check-ready
         env:
