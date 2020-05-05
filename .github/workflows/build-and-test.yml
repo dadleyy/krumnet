@@ -5,7 +5,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:11
+        image: postgres:11.5
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -17,8 +17,6 @@ jobs:
       - uses: actions/checkout@v1
       - name: pg-packages
         run: sudo apt-get -y install libpq-dev postgresql-client
-      - name: check-ready
-        run: pg_isready
       - name: install-beta
         run: rustup toolchain install beta
       - name: use-beta
