@@ -1,5 +1,4 @@
 use http::response::{Builder, Response};
-use http::status::StatusCode;
 use http::Uri;
 use http::{Method, Request};
 use log::info;
@@ -9,7 +8,6 @@ use url::form_urlencoded;
 
 use crate::authorization::AuthorizationUrls;
 use crate::configuration::GoogleCredentials;
-use crate::constants;
 use crate::persistence::{Connection as RecordConnection, RecordStore};
 use crate::session::SessionStore;
 
@@ -31,20 +29,21 @@ struct UserInfoPayload {
 
 // Given the token returned from an oauth code exchange, load the user's information from the
 // google api.
-async fn fetch_info(authorization: TokenExchangePayload) -> Result<UserInfoPayload, Error> {
+async fn fetch_info(
+  authorization: TokenExchangePayload,
+  urls: &AuthorizationUrls,
+) -> Result<UserInfoPayload, Error> {
   let client = isahc::HttpClient::new().map_err(|e| Error::new(ErrorKind::Other, e))?;
-  let mut request = Request::builder();
   let bearer = format!("Bearer {}", authorization.access_token);
-  request
-    .method(Method::GET)
-    .uri(constants::google_info_url())
-    .header("Authorization", bearer.as_str());
 
-  match client.send(
-    request
-      .body(())
-      .map_err(|e| Error::new(ErrorKind::Other, e))?,
-  ) {
+  let request = Request::builder()
+    .method(Method::GET)
+    .uri(&urls.identify)
+    .header("Authorization", bearer.as_str())
+    .body(())
+    .map_err(|e| Error::new(ErrorKind::Other, e))?;
+
+  match client.send(request) {
     Ok(mut response) if response.status() == 200 => {
       serde_json::from_reader(response.body_mut()).map_err(|e| Error::new(ErrorKind::Other, e))
     }
@@ -81,7 +80,7 @@ async fn exchange_code(
     .finish();
 
   match client.post(exchange_url, encoded) {
-    Ok(mut response) if response.status() == StatusCode::OK => {
+    Ok(mut response) if response.status().is_success() => {
       let body = response.body_mut();
       let payload = match serde_json::from_reader(body) {
         Ok(p) => p,
@@ -197,7 +196,7 @@ pub async fn callback(
     }
   };
 
-  let profile = match fetch_info(payload).await {
+  let profile = match fetch_info(payload, authorization).await {
     Ok(info) => info,
     Err(e) => {
       info!("[warning] unable to fetch user info: {}", e);

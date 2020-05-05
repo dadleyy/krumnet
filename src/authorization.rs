@@ -4,15 +4,16 @@ use url::Url;
 use crate::configuration::{Configuration, GoogleCredentials};
 
 use crate::constants::{
-  google_auth_url, google_token_url, GOOGLE_AUTH_CLIENT_ID_KEY, GOOGLE_AUTH_REDIRECT_URI_KEY,
-  GOOGLE_AUTH_RESPONSE_TYPE_KEY, GOOGLE_AUTH_RESPONSE_TYPE_VALUE, GOOGLE_AUTH_SCOPE_KEY,
-  GOOGLE_AUTH_SCOPE_VALUE,
+  google_auth_url, google_info_url, google_token_url, GOOGLE_AUTH_CLIENT_ID_KEY,
+  GOOGLE_AUTH_REDIRECT_URI_KEY, GOOGLE_AUTH_RESPONSE_TYPE_KEY, GOOGLE_AUTH_RESPONSE_TYPE_VALUE,
+  GOOGLE_AUTH_SCOPE_KEY, GOOGLE_AUTH_SCOPE_VALUE,
 };
 
 #[derive(Debug, Clone)]
 pub struct AuthorizationUrls {
   pub init: String,
   pub exchange: (String, GoogleCredentials),
+  pub identify: String,
   pub callback: String,
 }
 
@@ -42,6 +43,7 @@ impl AuthorizationUrls {
 
     Ok(AuthorizationUrls {
       init: authorization_url,
+      identify: google_info_url(),
       exchange: (google_token_url(), configuration.google.clone()),
       callback: configuration.krumi.auth_uri.clone(),
     })
