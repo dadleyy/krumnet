@@ -15,8 +15,8 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v1
-      - name: pg-dev postgresql-client-11
-        run: sudo apt-get -y install libpq-dev
+      - name: pg-packages
+        run: sudo apt-get -y install libpq-dev  postgresql-client-12 
       - name: check-ready
         env:
           POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
