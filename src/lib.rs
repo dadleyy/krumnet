@@ -26,7 +26,7 @@ mod persistence;
 use persistence::RecordStore;
 
 mod authorization;
-use authorization::AuthorizationUrls;
+use authorization::{Authorization, AuthorizationUrls};
 
 mod session;
 use session::SessionStore;
@@ -100,7 +100,7 @@ pub async fn load_authorization<S: SessionInterface, R: RecordInterface>(
   token: String,
   session: S,
   records: R,
-) -> Result<Option<AuthorizationUrls>, Error> {
+) -> Result<Option<Authorization>, Error> {
   let uid = session.get(token).await?;
   let mut conn = records.get()?;
   let tenant = conn
@@ -109,11 +109,11 @@ pub async fn load_authorization<S: SessionInterface, R: RecordInterface>(
     .iter()
     .nth(0)
     .and_then(|row| {
-      let id = row.try_get::<_, String>(0);
-      let name = row.try_get::<_, String>(1);
-      let default_email = row.try_get::<_, String>(2);
-      info!("found user '{:?}' {:?} {:?}", id, name, default_email);
-      None
+      let id = row.try_get::<_, String>(0).ok()?;
+      let name = row.try_get::<_, String>(1).ok()?;
+      let email = row.try_get::<_, String>(2).ok()?;
+      info!("found user '{:?}' {:?} {:?}", id, name, email);
+      Some(Authorization(id, name, email))
     });
 
   info!("loaded tenant from auth header: {:?}", tenant);

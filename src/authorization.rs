@@ -10,6 +10,9 @@ use crate::constants::{
 };
 
 #[derive(Debug, Clone)]
+pub struct Authorization(pub String, pub String, pub String);
+
+#[derive(Debug, Clone)]
 pub struct AuthorizationUrls {
   pub init: String,
   pub exchange: (String, GoogleCredentials),
