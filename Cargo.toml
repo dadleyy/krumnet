@@ -25,7 +25,7 @@ isahc = "^0.7"
 log = "^0.4"
 env_logger = "^0.7"
 elaine = "^1.0"
-r2d2_postgres = "^0.14"
+r2d2_postgres = "^0.16"
 r2d2 = "^0.8"
 jsonwebtoken = "^7.1.0"
 

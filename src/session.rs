@@ -24,7 +24,7 @@ struct SessionClaims {
   created: SystemTime,
 }
 
-fn lookup_command<S: std::fmt::Display>(prefix: S, key: String) -> StringCommand<String, String> {
+fn lookup_command<S: std::fmt::Display>(prefix: S, key: &String) -> StringCommand<String, String> {
   StringCommand::Get::<_, String>(Arity::One(format!("{}:{}", prefix, key)))
 }
 
@@ -50,12 +50,15 @@ impl SessionStore {
   }
 
   pub async fn get(&self, key: String) -> Result<String, Error> {
-    let lookup = lookup_command(&self._session_prefix, key);
+    let lookup = lookup_command(&self._session_prefix, &key);
     let mut stream = self._stream.write().await;
 
     match execute(&mut (*stream), lookup).await? {
       kramer::Response::Item(kramer::ResponseValue::String(id)) => Ok(id),
-      _ => Err(Error::new(ErrorKind::Other, "unable to find")),
+      _ => Err(Error::new(
+        ErrorKind::Other,
+        format!("Unable to find user for token '{}'", key),
+      )),
     }
   }
 

@@ -34,6 +34,8 @@ use session::SessionStore;
 mod routes;
 use routes::auth;
 
+const USER_FOR_SESSION: &'static str = include_str!("data-store/user-for-session.sql");
+
 fn not_found() -> Result<Response<Option<u8>>, Error> {
   Builder::new()
     .status(404)
@@ -88,6 +90,36 @@ where
   writer.write(serialized.as_bytes()).await.map(|_| ())
 }
 
+pub trait SessionInterface: std::ops::Deref<Target = SessionStore> {}
+impl<T> SessionInterface for T where T: std::ops::Deref<Target = SessionStore> {}
+
+pub trait RecordInterface: std::ops::Deref<Target = RecordStore> {}
+impl<T> RecordInterface for T where T: std::ops::Deref<Target = RecordStore> {}
+
+pub async fn load_authorization<S: SessionInterface, R: RecordInterface>(
+  token: String,
+  session: S,
+  records: R,
+) -> Result<Option<AuthorizationUrls>, Error> {
+  let uid = session.get(token).await?;
+  let mut conn = records.get()?;
+  let tenant = conn
+    .query(USER_FOR_SESSION, &[&uid])
+    .map_err(|e| Error::new(ErrorKind::Other, e))?
+    .iter()
+    .nth(0)
+    .and_then(|row| {
+      let id = row.try_get::<_, String>(0);
+      let name = row.try_get::<_, String>(1);
+      let default_email = row.try_get::<_, String>(2);
+      info!("found user '{:?}' {:?} {:?}", id, name, default_email);
+      None
+    });
+
+  info!("loaded tenant from auth header: {:?}", tenant);
+  Ok(tenant)
+}
+
 async fn handle<T, S, R, A>(
   mut connection: T,
   session: S,
@@ -96,8 +128,8 @@ async fn handle<T, S, R, A>(
 ) -> Result<(), Error>
 where
   T: AsyncRead + AsyncWrite + Unpin,
-  S: std::ops::Deref<Target = SessionStore>,
-  R: std::ops::Deref<Target = RecordStore>,
+  S: SessionInterface,
+  R: RecordInterface,
   A: std::ops::Deref<Target = AuthorizationUrls>,
 {
   let head = recognize(&mut connection).await?;
@@ -108,8 +140,8 @@ where
         .map_err(|e| Error::new(ErrorKind::Other, e))?;
 
       let auth = match head.find_header("Authorization") {
-        Some(key) => session.get(key).await.ok(),
-        None => None,
+        Some(key) => load_authorization(key, session.deref(), records.deref()).await,
+        None => Ok(None),
       };
 
       info!("request - {} {:?}", uri.path(), auth);

@@ -3,8 +3,6 @@ use http::status::StatusCode;
 use http::Uri;
 use http::{Method, Request};
 use log::info;
-use r2d2::PooledConnection;
-use r2d2_postgres::PostgresConnectionManager as Postgres;
 use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind};
 use url::form_urlencoded;
@@ -12,11 +10,11 @@ use url::form_urlencoded;
 use crate::authorization::AuthorizationUrls;
 use crate::configuration::GoogleCredentials;
 use crate::constants;
-use crate::persistence::RecordStore;
+use crate::persistence::{Connection as RecordConnection, RecordStore};
 use crate::session::SessionStore;
 
-const FIND_USER: &'static str = include_str!("data-store/find_user.sql");
-const CREATE_USER: &'static str = include_str!("data-store/create_user.sql");
+const FIND_USER: &'static str = include_str!("data-store/find-user.sql");
+const CREATE_USER: &'static str = include_str!("data-store/create-user.sql");
 
 #[derive(Debug, PartialEq, Deserialize)]
 struct TokenExchangePayload {
@@ -109,10 +107,7 @@ async fn exchange_code(
 
 // Given user information loaded from the api, attempt to save the information into the persistence
 // engine.
-fn make_user(
-  details: &UserInfoPayload,
-  conn: &PooledConnection<Postgres>,
-) -> Result<String, Error> {
+fn make_user(details: &UserInfoPayload, conn: &mut RecordConnection) -> Result<String, Error> {
   let UserInfoPayload {
     email,
     name,
@@ -123,10 +118,13 @@ fn make_user(
     .execute(CREATE_USER, &[&email, &name, &email, &name, &sub])
     .map_err(|e| Error::new(ErrorKind::Other, e))?;
 
-  let tenant = conn.query(FIND_USER, &[&sub])?;
+  let tenant = conn
+    .query(FIND_USER, &[&sub])
+    .map_err(|e| Error::new(ErrorKind::Other, e))?;
+
   match tenant.iter().nth(0) {
-    Some(row) => match row.get_opt::<_, String>(0) {
-      Some(Ok(id)) => Ok(id),
+    Some(row) => match row.try_get::<_, String>(0) {
+      Ok(id) => Ok(id),
       _ => Err(Error::new(
         ErrorKind::Other,
         "Found matching row, but unable to parse",
@@ -143,14 +141,16 @@ fn make_user(
 // find by the email address and make sure to backfill the google account. If there is still no
 // matching user information, attempt to create a new user and google account.
 fn find_or_create_user(profile: &UserInfoPayload, records: &RecordStore) -> Result<String, Error> {
-  let conn = records.get()?;
+  let mut conn = records.get()?;
   info!("loaded user info: {:?}", profile);
 
-  let tenant = conn.query(FIND_USER, &[&profile.sub])?;
+  let tenant = conn
+    .query(FIND_USER, &[&profile.sub])
+    .map_err(|e| Error::new(ErrorKind::Other, e))?;
 
   match tenant.iter().nth(0) {
-    Some(row) => match row.get_opt::<_, String>(0) {
-      Some(Ok(id)) => {
+    Some(row) => match row.try_get::<_, String>(0) {
+      Ok(id) => {
         info!("found existing user {}", id);
         Ok(id)
       }
@@ -161,7 +161,7 @@ fn find_or_create_user(profile: &UserInfoPayload, records: &RecordStore) -> Resu
     },
     None => {
       info!("no matching user, creating");
-      make_user(&profile, &conn)
+      make_user(&profile, &mut conn)
     }
   }
 }
