@@ -4,7 +4,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image:  rust:1.43.0
+      image:  rust:1.43.0-alpine
     services:
       postgres:
         image: postgres:10.8
@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - name: pg-packages
-        run: sudo apt-get -y install libpq-dev postgresql-client
+        run: apk add --no-cache libpq-dev postgresql-client
       - name: install-beta
         run: rustup toolchain install beta
       - name: use-beta
