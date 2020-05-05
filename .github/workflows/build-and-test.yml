@@ -26,4 +26,4 @@ jobs:
       - name: build
         run: cargo build
       - name: test
-        run: cargo test --verbose -- --nocapture
+        run: cargo test --lib --verbose -- --nocapture
