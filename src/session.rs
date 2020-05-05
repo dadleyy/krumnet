@@ -24,6 +24,10 @@ struct SessionClaims {
   created: SystemTime,
 }
 
+fn lookup_command<S: std::fmt::Display>(prefix: S, key: String) -> StringCommand<String, String> {
+  StringCommand::Get::<_, String>(Arity::One(format!("{}:{}", prefix, key)))
+}
+
 impl SessionStore {
   pub async fn open<C>(configuration: C) -> Result<Self, Error>
   where
@@ -45,6 +49,16 @@ impl SessionStore {
     })
   }
 
+  pub async fn get(&self, key: String) -> Result<String, Error> {
+    let lookup = lookup_command(&self._session_prefix, key);
+    let mut stream = self._stream.write().await;
+
+    match execute(&mut (*stream), lookup).await? {
+      kramer::Response::Item(kramer::ResponseValue::String(id)) => Ok(id),
+      _ => Err(Error::new(ErrorKind::Other, "unable to find")),
+    }
+  }
+
   pub async fn create<S>(&self, id: S) -> Result<String, Error>
   where
     S: std::fmt::Display,
@@ -58,9 +72,9 @@ impl SessionStore {
       .map_err(|e| Error::new(ErrorKind::Other, e))?;
 
     let key = format!("{}:{}", self._session_prefix, token);
-    let insertion = StringCommand::Set(Arity::One((&key, &id)), None, Insertion::Always);
+    let insert = StringCommand::Set(Arity::One((&key, &id)), None, Insertion::Always);
     let mut stream = self._stream.write().await;
-    execute(&mut (*stream), insertion).await?;
+    execute(&mut (*stream), insert).await?;
     info!("creating session for user id: {}", id);
     Ok(token)
   }

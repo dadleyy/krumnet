@@ -107,7 +107,10 @@ where
         .parse::<Uri>()
         .map_err(|e| Error::new(ErrorKind::Other, e))?;
 
-      let auth = head.find_header("Authorization");
+      let auth = match head.find_header("Authorization") {
+        Some(key) => session.get(key).await.ok(),
+        None => None,
+      };
 
       info!("request - {} {:?}", uri.path(), auth);
 
