@@ -12,6 +12,12 @@ pub struct RecordStore {
   pool: ConnectionPool<Postgres<NoTls>>,
 }
 
+impl std::fmt::Debug for RecordStore {
+  fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+    write!(formatter, "RecordStore")
+  }
+}
+
 impl RecordStore {
   pub fn open<C>(config: C) -> Result<Self, Error>
   where
