@@ -5,7 +5,7 @@
     "cors_origin": "http://0.0.0.0:8081"
   },
   "record_store": {
-    "postgres_uri": "postgres://postgres:postgres@localhost:5432/krumnet-test"
+    "postgres_uri": "postgres://postgres:postgres@postgres:5432/krumnet-test"
   },
   "session_store": {
     "redis_uri": "redis://0.0.0.0:6379",
