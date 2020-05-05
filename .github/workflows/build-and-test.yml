@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - name: check-ready
-        run: pg_isready --port=5432 --host=postgres
+        run: pg_isready --username postgres --host postgres --port 5432
       - name: create-db
         run: createdb --port=5432 --host=postgres krumnet-test
       - name: install-beta
