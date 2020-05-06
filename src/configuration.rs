@@ -124,3 +124,20 @@ pub struct SessionStoreConfiguration {
   pub secret: String,
   pub session_prefix: String,
 }
+
+#[cfg(test)]
+mod test {
+  use crate::configuration::Configuration;
+
+  #[test]
+  fn from_file_exists() {
+    let result = Configuration::load(".github/krumnet-config.json");
+    assert_eq!(result.is_ok(), true);
+  }
+
+  #[test]
+  fn from_file_not_exists() {
+    let result = Configuration::load("does-not-exist");
+    assert_eq!(result.is_err(), true);
+  }
+}
