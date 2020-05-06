@@ -30,4 +30,4 @@ jobs:
       - name: Run tests
         run: cargo test --verbose -- --nocapture
         env:
-          KRUMNET_TEST_CONFIG_FILE: .github/krumnet-config.json
+          KRUMNET_TEST_CONFIG_FILE: ci/github/krumnet-config.json

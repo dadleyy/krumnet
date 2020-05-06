@@ -145,7 +145,7 @@ mod test {
 
   #[test]
   fn from_file_exists() {
-    let result = Configuration::load(".github/krumnet-config.json");
+    let result = Configuration::load("ci/github-actions/krumnet-config.json");
     assert_eq!(result.is_ok(), true);
   }
 

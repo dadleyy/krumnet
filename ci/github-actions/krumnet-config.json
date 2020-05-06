@@ -1,0 +1,20 @@
+{
+  "addr": "0.0.0.0:8080",
+  "krumi": {
+    "auth_uri": "http://0.0.0.0:8081/auth/callback",
+    "cors_origin": "http://0.0.0.0:8081"
+  },
+  "record_store": {
+    "postgres_uri": "host=postgres user=postgres password=postgres"
+  },
+  "session_store": {
+    "redis_uri": "redis://0.0.0.0:6379",
+    "secret": "krumnet",
+    "session_prefix": "session"
+  },
+  "google": {
+    "client_id": "...",
+    "client_secret": "...",
+    "redirect_uri": "http://0.0.0.0:8080/auth/callback"
+  }
+}
