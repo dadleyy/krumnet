@@ -237,7 +237,7 @@ pub async fn identify() -> Result<Response<Option<String>>, Error> {
 
 #[cfg(test)]
 mod test {
-  use crate::configuration::test::load_config;
+  use crate::configuration::test_helpers::load_config;
   use crate::persistence::RecordStore;
 
   #[test]
