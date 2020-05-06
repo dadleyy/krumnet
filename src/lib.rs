@@ -9,7 +9,7 @@ use async_std::net::TcpListener;
 use async_std::prelude::*;
 use async_std::task;
 use elaine::{recognize, RequestMethod};
-use http::response::{Builder, Response};
+use http::response::Response;
 use http::uri::Uri;
 use log::info;
 use serde::Serialize;
@@ -32,27 +32,9 @@ mod session;
 use session::SessionStore;
 
 mod routes;
-use routes::auth;
+use routes::{auth, not_found, redirect};
 
 const USER_FOR_SESSION: &'static str = include_str!("data-store/user-for-session.sql");
-
-fn not_found() -> Result<Response<Option<u8>>, Error> {
-  Builder::new()
-    .status(404)
-    .body(None)
-    .map_err(|e| Error::new(ErrorKind::Other, e))
-}
-
-fn redirect<S>(location: S) -> Result<Response<Option<u8>>, Error>
-where
-  S: std::fmt::Display,
-{
-  Builder::new()
-    .status(302)
-    .header(http::header::LOCATION, format!("{}", location))
-    .body(None)
-    .map_err(|e| Error::new(ErrorKind::Other, e))
-}
 
 async fn write<C, D>(mut writer: C, data: Result<Response<Option<D>>, Error>) -> Result<(), Error>
 where
