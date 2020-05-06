@@ -17,19 +17,17 @@ jobs:
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
       - uses: actions/checkout@v1
-      - name: pg-packages
+      - name: Install postgres packages
         run: apt-get -y install libpq-dev
-      - name: install-beta
+      - name: List github files
+        run: ls -lah .github/
+      - name: Rustup install beta
         run: rustup toolchain install beta
-      - name: use-beta
+      - name: Rustup use beta
         run: rustup default beta
-      - name: build
+      - name: Build
         run: cargo build
-      - name: print-pwd
-        run: pwd
-      - name: print-ls
-        run: ls -lah
-      - name: test
+      - name: Run tests
         run: cargo test --verbose -- --nocapture
         env:
           KRUMNET_TEST_CONFIG_FILE: .github/krumnet-config.json

@@ -237,15 +237,12 @@ pub async fn identify() -> Result<Response<Option<String>>, Error> {
 
 #[cfg(test)]
 mod test {
-  use crate::configuration::Configuration;
+  use crate::configuration::test::load_config;
   use crate::persistence::RecordStore;
-  use std::env;
 
   #[test]
   fn existing_user_ok() {
-    let path =
-      env::var("KRUMNET_TEST_CONFIG_FILE").unwrap_or(String::from("krumnet-config.example.json"));
-    let config = Configuration::load(&path);
+    let config = load_config();
     println!("config: {:?}", config);
     assert!(config.is_ok());
     let unwrapped = config.unwrap();

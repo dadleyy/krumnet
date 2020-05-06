@@ -126,8 +126,17 @@ pub struct SessionStoreConfiguration {
 }
 
 #[cfg(test)]
-mod test {
+pub mod test {
   use crate::configuration::Configuration;
+  use std::env;
+  use std::io::Error;
+
+  const CONFIG_VAR: &'static str = "KRUMNET_TEST_CONFIG_FILE";
+
+  pub fn load_config() -> Result<Configuration, Error> {
+    let path = env::var(CONFIG_VAR).unwrap_or(String::from("krumnet-config.example.json"));
+    Configuration::load(&path)
+  }
 
   #[test]
   fn from_file_exists() {
