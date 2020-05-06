@@ -1,7 +1,13 @@
 use http::response::{Builder, Response};
+use log::info;
 use std::io::{Error, ErrorKind};
 
 pub mod auth;
+
+pub fn server_error<T>(original: Error) -> Response<Option<T>> {
+  info!("server error - {}", original);
+  Response::builder().status(500).body(None).unwrap()
+}
 
 pub fn not_found() -> Result<Response<Option<u8>>, Error> {
   Builder::new()

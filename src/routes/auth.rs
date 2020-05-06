@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind};
 use url::form_urlencoded;
 
-use crate::authorization::AuthorizationUrls;
+use crate::authorization::{Authorization, AuthorizationUrls};
 use crate::configuration::GoogleCredentials;
 use crate::persistence::{Connection as RecordConnection, RecordStore};
 use crate::session::SessionStore;
@@ -228,7 +228,10 @@ pub async fn callback(
     .map_err(|e| Error::new(ErrorKind::Other, e))
 }
 
-pub async fn identify() -> Result<Response<Option<String>>, Error> {
+pub async fn identify(
+  _authorization: &Option<Authorization>,
+  _records: &RecordStore,
+) -> Result<Response<Option<String>>, Error> {
   Builder::new()
     .status(200)
     .body(None)

@@ -32,43 +32,31 @@ mod session;
 use session::SessionStore;
 
 mod routes;
-use routes::{auth, not_found, redirect};
+use routes::{auth, not_found, redirect, server_error};
 
 const USER_FOR_SESSION: &'static str = include_str!("data-store/user-for-session.sql");
+
+fn format_header(pair: (&http::header::HeaderName, &http::HeaderValue)) -> String {
+  let (key, value) = pair;
+  format!("{}: {}\r\n", key, value.to_str().unwrap_or(""))
+}
 
 async fn write<C, D>(mut writer: C, data: Result<Response<Option<D>>, Error>) -> Result<(), Error>
 where
   C: AsyncWrite + Unpin,
-  D: Serialize,
+  D: Serialize + Default,
 {
   if let Err(e) = &data {
     info!("[warning] attempted to write a failed handler: {:?}", e);
   }
 
-  let (top, _) = data
-    .unwrap_or(
-      Response::builder()
-        .status(500)
-        .body(None)
-        .map_err(|e| Error::new(ErrorKind::Other, e))?,
-    )
-    .into_parts();
+  // TODO - figure out bodies
+  let (top, _) = data.unwrap_or_else(server_error).into_parts();
 
   let reason = top.status.canonical_reason().unwrap_or_default();
-  let headers = top
-    .headers
-    .iter()
-    .map(|(key, value)| {
-      format!(
-        "{}: {}\r\n",
-        key.as_str(),
-        value.to_str().unwrap_or_default()
-      )
-    })
-    .collect::<String>();
+  let headers = top.headers.iter().map(format_header).collect::<String>();
   let code = top.status.as_str();
   let serialized = format!("HTTP/1.1 {} {}\r\n{}\r\n", code, reason, headers);
-
   writer.write(serialized.as_bytes()).await.map(|_| ())
 }
 
@@ -124,7 +112,11 @@ where
       let auth = match head.find_header("Authorization") {
         Some(key) => load_authorization(key, session.deref(), records.deref()).await,
         None => Ok(None),
-      };
+      }
+      .unwrap_or_else(|e| {
+        info!("unable to load authorization - {}", e);
+        None
+      });
 
       info!("request - {} {:?}", uri.path(), auth);
 
@@ -134,7 +126,7 @@ where
           write(&mut connection, res).await
         }
         (Some(RequestMethod::GET), "/auth/identify") => {
-          let res = auth::identify().await;
+          let res = auth::identify(&auth, &records).await;
           write(&mut connection, res).await
         }
         (Some(RequestMethod::GET), "/auth/redirect") => {
