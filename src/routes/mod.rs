@@ -1,28 +1,20 @@
-use http::response::{Builder, Response};
 use log::info;
-use std::io::{Error, ErrorKind};
+use serde::Serialize;
+use std::io::Error;
+
+use crate::http::Response as Res;
 
 pub mod auth;
 
-pub fn server_error<T>(original: Error) -> Response<Option<T>> {
+pub fn server_error<T: Serialize>(original: Error) -> Res<T> {
   info!("server error - {}", original);
-  Response::builder().status(500).body(None).unwrap()
+  Res::server_error()
 }
 
-pub fn not_found<T>() -> Result<Response<Option<T>>, Error> {
-  Builder::new()
-    .status(404)
-    .body(None)
-    .map_err(|e| Error::new(ErrorKind::Other, e))
+pub fn not_found<T: Serialize>() -> Res<T> {
+  Res::not_found()
 }
 
-pub fn redirect<S>(location: S) -> Result<Response<Option<()>>, Error>
-where
-  S: std::fmt::Display,
-{
-  Builder::new()
-    .status(302)
-    .header(http::header::LOCATION, format!("{}", location))
-    .body(None)
-    .map_err(|e| Error::new(ErrorKind::Other, e))
+pub fn redirect<T: Serialize>(location: String) -> Res<T> {
+  Res::Redirect(location)
 }

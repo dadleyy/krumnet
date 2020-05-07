@@ -1,6 +1,3 @@
-use http::response::{Builder, Response};
-use http::Uri;
-use http::{Method, Request};
 use log::info;
 use r2d2_postgres::postgres::row::Row;
 use serde::{Deserialize, Serialize};
@@ -9,6 +6,7 @@ use url::form_urlencoded;
 
 use crate::authorization::{Authorization, AuthorizationUrls};
 use crate::configuration::GoogleCredentials;
+use crate::http::{Builder, Method, Request, Response as Res, Uri};
 use crate::persistence::{Connection as RecordConnection, RecordStore};
 use crate::routes::not_found;
 use crate::session::SessionStore;
@@ -176,26 +174,18 @@ pub async fn callback(
   session: &SessionStore,
   records: &RecordStore,
   authorization: &AuthorizationUrls,
-) -> Result<Response<Option<u8>>, Error> {
+) -> Result<Res<()>, Error> {
   let query = uri.query().unwrap_or_default().as_bytes();
   let code = match form_urlencoded::parse(query).find(|(key, _)| key == "code") {
     Some((_, code)) => code,
-    None => {
-      return Builder::new()
-        .status(404)
-        .body(None)
-        .map_err(|e| Error::new(ErrorKind::Other, e))
-    }
+    None => return Ok(Res::not_found()),
   };
 
   let payload = match exchange_code(&code, authorization).await {
     Ok(payload) => payload,
     Err(e) => {
       info!("[warning] unable ot exchange code: {}", e);
-      return Builder::new()
-        .status(404)
-        .body(None)
-        .map_err(|e| Error::new(ErrorKind::Other, e));
+      return Ok(Res::not_found());
     }
   };
 
@@ -203,10 +193,7 @@ pub async fn callback(
     Ok(info) => info,
     Err(e) => {
       info!("[warning] unable to fetch user info: {}", e);
-      return Builder::new()
-        .status(404)
-        .body(None)
-        .map_err(|e| Error::new(ErrorKind::Other, e));
+      return Ok(Res::not_found());
     }
   };
 
@@ -214,21 +201,14 @@ pub async fn callback(
     Ok(id) => id,
     Err(e) => {
       info!("[warning] unable to create/find user: {:?}", e);
-      return Builder::new()
-        .status(404)
-        .body(None)
-        .map_err(|e| Error::new(ErrorKind::Other, e));
+      return Ok(Res::not_found());
     }
   };
 
   let token = session.create(&uid).await?;
   info!("creating session for user id: {}", token);
 
-  Builder::new()
-    .status(301)
-    .header("Location", authorization.callback.clone())
-    .body(None)
-    .map_err(|e| Error::new(ErrorKind::Other, e))
+  Ok(Res::redirect(authorization.callback.clone()))
 }
 
 #[derive(Debug, Serialize)]
@@ -252,10 +232,10 @@ pub fn parse_user_session_query(row: Row) -> Option<SessionPayload> {
 pub async fn identify(
   authorization: &Option<Authorization>,
   records: &RecordStore,
-) -> Result<Response<Option<SessionPayload>>, Error> {
+) -> Result<Res<SessionPayload>, Error> {
   let Authorization(uid, _, _) = match authorization {
     Some(auth) => auth,
-    None => return not_found(),
+    None => return Ok(not_found()),
   };
 
   let mut conn = records.get()?;
@@ -270,10 +250,16 @@ pub async fn identify(
     "loading session payload for user '{}' (payload {:?})",
     uid, tenant
   );
-  Builder::new()
-    .status(200)
-    .body(tenant)
-    .map_err(|e| Error::new(ErrorKind::Other, e))
+
+  tenant
+    .and_then(|found| {
+      Builder::new()
+        .status(200)
+        .body(found)
+        .map(|res| Ok(Res::json(res)))
+        .ok()
+    })
+    .unwrap_or(Ok(Res::not_found()))
 }
 
 #[cfg(test)]

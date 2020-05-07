@@ -1,6 +1,5 @@
 extern crate async_std;
 extern crate elaine;
-extern crate http;
 extern crate log;
 extern crate serde;
 
@@ -9,8 +8,6 @@ use async_std::net::TcpListener;
 use async_std::prelude::*;
 use async_std::task;
 use elaine::{recognize, RequestMethod};
-use http::response::Response;
-use http::uri::Uri;
 use log::info;
 use serde::Serialize;
 use std::io::{Error, ErrorKind};
@@ -18,6 +15,9 @@ use std::marker::Unpin;
 use std::sync::Arc;
 
 pub mod constants;
+
+pub mod http;
+use crate::http::{Response as Res, Uri};
 
 pub mod configuration;
 use configuration::Configuration;
@@ -36,12 +36,7 @@ use routes::{auth, not_found, redirect, server_error};
 
 const USER_FOR_SESSION: &'static str = include_str!("data-store/user-for-session.sql");
 
-fn format_header(pair: (&http::header::HeaderName, &http::HeaderValue)) -> String {
-  let (key, value) = pair;
-  format!("{}: {}", key, value.to_str().unwrap_or(""))
-}
-
-async fn write<C, D>(mut writer: C, data: Result<Response<Option<D>>, Error>) -> Result<(), Error>
+async fn write<C, D>(mut writer: C, data: Result<Res<D>, Error>) -> Result<(), Error>
 where
   C: AsyncWrite + Unpin,
   D: Serialize,
@@ -52,67 +47,12 @@ where
 
   info!("writing response");
 
-  let (top, body) = data.unwrap_or_else(server_error).into_parts();
+  let res = data.unwrap_or_else(server_error);
 
-  let mut headers = top
-    .headers
-    .iter()
-    .map(format_header)
-    .collect::<Vec<String>>();
-
-  let reason = top.status.canonical_reason().unwrap_or_default();
-  let code = top.status.as_str();
-  let payload = body.and_then(|serializable| {
-    info!("found serializable body, using json");
-
-    match serde_json::to_string(&serializable) {
-      Ok(data) => {
-        info!("serialized payload - {}", data);
-        let len = data.len().into();
-        let nam = http::header::HeaderName::from_static("content-length");
-        let pair = (&nam, &len);
-        headers.push(format_header(pair));
-        Some(data)
-      }
-      Err(e) => {
-        info!("unable to serialize payload - {}", e);
-        None
-      }
-    }
-  });
-
-  let head = headers
-    .iter()
-    .map(|s| format!("{}\r\n", s))
-    .collect::<String>();
-
-  let serialized = format!(
-    "HTTP/1.1 {} {}\r\n{}\r\n{}",
-    code,
-    reason,
-    head,
-    payload.unwrap_or_default()
-  );
-
-  /*
-  if let Some(serializable) = body {
-    let payload = match serde_json::to_string(&serializable) {
-      Ok(payload) => payload,
-      Err(e) => {
-        info!("unable to serialize response: {}", e);
-        let res = server_error::<()>(Error::new(ErrorKind::Other, e));
-        return writer
-          .write_all(format!("HTTP/1.0 422 Bad Request\r\n\r\n").as_bytes())
-          .await
-          .map(|_| ());
-      }
-    };
-    let serialized = format!("{}\r\n{}", serialized, payload);
-    return writer.write_all(serialized.as_bytes()).await.map(|_| ());
-  }
-  */
-
-  writer.write(serialized.as_bytes()).await.map(|_| ())
+  writer
+    .write(format!("{}", res).as_bytes())
+    .await
+    .map(|_| ())
 }
 
 pub trait SessionInterface: std::ops::Deref<Target = SessionStore> {}
@@ -185,9 +125,10 @@ where
           write(&mut connection, res).await
         }
         (Some(RequestMethod::GET), "/auth/redirect") => {
-          write(&mut connection, redirect(format!("{}", authorization.init))).await
+          let res = Ok(redirect::<()>(format!("{}", authorization.init)));
+          write(&mut connection, res).await
         }
-        _ => write(&mut connection, not_found::<()>()).await,
+        _ => write(&mut connection, Ok(not_found::<()>())).await,
       }
     }
     None => Ok(()),
