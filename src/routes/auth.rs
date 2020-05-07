@@ -2,6 +2,7 @@ use http::response::{Builder, Response};
 use http::Uri;
 use http::{Method, Request};
 use log::info;
+use r2d2_postgres::postgres::row::Row;
 use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind};
 use url::form_urlencoded;
@@ -9,9 +10,11 @@ use url::form_urlencoded;
 use crate::authorization::{Authorization, AuthorizationUrls};
 use crate::configuration::GoogleCredentials;
 use crate::persistence::{Connection as RecordConnection, RecordStore};
+use crate::routes::not_found;
 use crate::session::SessionStore;
 
-const FIND_USER: &'static str = include_str!("data-store/find-user.sql");
+const USER_FOR_SESSION: &'static str = include_str!("data-store/load-user-for-session.sql");
+const FIND_USER: &'static str = include_str!("data-store/find-user-by-google-id.sql");
 const CREATE_USER: &'static str = include_str!("data-store/create-user.sql");
 
 #[derive(Debug, PartialEq, Deserialize)]
@@ -228,13 +231,48 @@ pub async fn callback(
     .map_err(|e| Error::new(ErrorKind::Other, e))
 }
 
+#[derive(Debug, Serialize)]
+pub struct SessionPayload {
+  pub id: String,
+  pub email: String,
+  pub name: String,
+}
+
+pub fn parse_user_session_query(row: Row) -> Option<SessionPayload> {
+  row.try_get(0).ok().and_then(|id| {
+    row.try_get(1).ok().and_then(|name| {
+      row
+        .try_get(2)
+        .ok()
+        .map(|email| SessionPayload { id, email, name })
+    })
+  })
+}
+
 pub async fn identify(
-  _authorization: &Option<Authorization>,
-  _records: &RecordStore,
-) -> Result<Response<Option<String>>, Error> {
+  authorization: &Option<Authorization>,
+  records: &RecordStore,
+) -> Result<Response<Option<SessionPayload>>, Error> {
+  let Authorization(uid, _, _) = match authorization {
+    Some(auth) => auth,
+    None => return not_found(),
+  };
+
+  let mut conn = records.get()?;
+
+  let tenant = conn
+    .query(USER_FOR_SESSION, &[&uid])
+    .ok()
+    .and_then(|mut rows| rows.pop())
+    .and_then(parse_user_session_query);
+
+  info!(
+    "loading session payload for user '{}' (payload {:?})",
+    uid, tenant
+  );
   Builder::new()
     .status(200)
-    .body(None)
+    .body(tenant)
     .map_err(|e| Error::new(ErrorKind::Other, e))
 }
 

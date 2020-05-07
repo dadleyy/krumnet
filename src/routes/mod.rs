@@ -9,14 +9,14 @@ pub fn server_error<T>(original: Error) -> Response<Option<T>> {
   Response::builder().status(500).body(None).unwrap()
 }
 
-pub fn not_found() -> Result<Response<Option<u8>>, Error> {
+pub fn not_found<T>() -> Result<Response<Option<T>>, Error> {
   Builder::new()
     .status(404)
     .body(None)
     .map_err(|e| Error::new(ErrorKind::Other, e))
 }
 
-pub fn redirect<S>(location: S) -> Result<Response<Option<u8>>, Error>
+pub fn redirect<S>(location: S) -> Result<Response<Option<()>>, Error>
 where
   S: std::fmt::Display,
 {
