@@ -36,6 +36,13 @@ use routes::{auth, not_found, redirect, server_error};
 
 const USER_FOR_SESSION: &'static str = include_str!("data-store/user-for-session.sql");
 
+pub trait SessionInterface: std::ops::Deref<Target = SessionStore> {}
+impl<T> SessionInterface for T where T: std::ops::Deref<Target = SessionStore> {}
+
+pub trait RecordInterface: std::ops::Deref<Target = RecordStore> {}
+impl<T> RecordInterface for T where T: std::ops::Deref<Target = RecordStore> {}
+
+// Given a response, writes it to our connection.
 async fn write<C, D>(mut writer: C, data: Result<Res<D>, Error>) -> Result<(), Error>
 where
   C: AsyncWrite + Unpin,
@@ -55,12 +62,8 @@ where
     .map(|_| ())
 }
 
-pub trait SessionInterface: std::ops::Deref<Target = SessionStore> {}
-impl<T> SessionInterface for T where T: std::ops::Deref<Target = SessionStore> {}
-
-pub trait RecordInterface: std::ops::Deref<Target = RecordStore> {}
-impl<T> RecordInterface for T where T: std::ops::Deref<Target = RecordStore> {}
-
+// Attempts to exchange an authorization token for a user id from the session store, subsequently
+// loading the actual user information from the record store.
 pub async fn load_authorization<S: SessionInterface, R: RecordInterface>(
   token: String,
   session: S,
@@ -85,6 +88,7 @@ pub async fn load_authorization<S: SessionInterface, R: RecordInterface>(
   Ok(tenant)
 }
 
+// Called for each new connection to the server, this is where requests are routed.
 async fn handle<T, S, R, A>(
   mut connection: T,
   session: S,
