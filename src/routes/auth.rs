@@ -2,7 +2,7 @@ use isahc::HttpClient;
 use log::info;
 use r2d2_postgres::postgres::row::Row;
 use serde::{Deserialize, Serialize};
-use std::io::{Error, ErrorKind};
+use std::io::{Error, ErrorKind, Result};
 
 use crate::authorization::{cors as cors_headers, Authorization, AuthorizationUrls};
 use crate::configuration::GoogleCredentials;
@@ -34,7 +34,7 @@ pub async fn destroy(
   uri: &Uri,
   session: &SessionStore,
   urls: &AuthorizationUrls,
-) -> Result<Res<()>, Error> {
+) -> Result<Res<()>> {
   let token = auth
     .as_ref()
     .map(|Authorization(_, _, _, token)| token.clone())
@@ -57,7 +57,7 @@ pub async fn destroy(
 async fn fetch_info(
   authorization: TokenExchangePayload,
   urls: &AuthorizationUrls,
-) -> Result<UserInfoPayload, Error> {
+) -> Result<UserInfoPayload> {
   let client = HttpClient::new().map_err(|e| Error::new(ErrorKind::Other, e))?;
   let bearer = format!("Bearer {}", authorization.access_token);
 
@@ -85,7 +85,7 @@ async fn fetch_info(
 async fn exchange_code(
   code: &str,
   authorization: &AuthorizationUrls,
-) -> Result<TokenExchangePayload, Error> {
+) -> Result<TokenExchangePayload> {
   let client = HttpClient::new().map_err(|e| Error::new(ErrorKind::Other, e))?;
   let (
     exchange_url,
@@ -130,8 +130,8 @@ async fn exchange_code(
 }
 
 // Given user information loaded from the api, attempt to save the information into the persistence
-// engine.
-fn make_user(details: &UserInfoPayload, conn: &mut RecordConnection) -> Result<String, Error> {
+// engine, returning the newly created system id if successful.
+fn make_user(details: &UserInfoPayload, conn: &mut RecordConnection) -> Result<String> {
   let UserInfoPayload {
     email,
     name,
@@ -164,7 +164,7 @@ fn make_user(details: &UserInfoPayload, conn: &mut RecordConnection) -> Result<S
 // Attempt to find a user based on the google account id returned. If none is found, attempt to
 // find by the email address and make sure to backfill the google account. If there is still no
 // matching user information, attempt to create a new user and google account.
-fn find_or_create_user(profile: &UserInfoPayload, records: &RecordStore) -> Result<String, Error> {
+fn find_or_create_user(profile: &UserInfoPayload, records: &RecordStore) -> Result<String> {
   let mut conn = records.get()?;
   info!("loaded user info: {:?}", profile);
 
@@ -190,7 +190,7 @@ fn find_or_create_user(profile: &UserInfoPayload, records: &RecordStore) -> Resu
   }
 }
 
-fn build_krumi_callback(urls: &AuthorizationUrls, token: &String) -> Result<String, Error> {
+fn build_krumi_callback(urls: &AuthorizationUrls, token: &String) -> Result<String> {
   let mut parsed_callback =
     Url::parse(&urls.callback).map_err(|e| Error::new(ErrorKind::Other, e))?;
 
@@ -209,7 +209,7 @@ pub async fn callback(
   session: &SessionStore,
   records: &RecordStore,
   authorization: &AuthorizationUrls,
-) -> Result<Res<()>, Error> {
+) -> Result<Res<()>> {
   let query = uri.query().unwrap_or_default().as_bytes();
 
   let code = match qs::parse(query).find(|(key, _)| key == "code") {
@@ -265,7 +265,7 @@ pub async fn identify(
   authorization: &Option<Authorization>,
   records: &RecordStore,
   auth_urls: &AuthorizationUrls,
-) -> Result<Res<SessionPayload>, Error> {
+) -> Result<Res<SessionPayload>> {
   let Authorization(uid, _, _, _) = match authorization {
     Some(auth) => auth,
     None => return Ok(Res::not_found(cors_headers(auth_urls).ok())),
@@ -287,7 +287,7 @@ pub async fn identify(
   tenant
     .and_then(|found| {
       let mut builder = Builder::new().status(200);
-      let cors = cors_headers(&auth_urls).ok()?;
+      let cors = cors_headers(auth_urls).ok()?;
 
       for header in cors {
         if let (Some(key), value) = header {
