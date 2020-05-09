@@ -27,6 +27,8 @@ struct UserInfoPayload {
   picture: String,
 }
 
+// Destroy is a route handler that will attempt to delete the session associated with the token
+// provided in the authorization header _or_ as a `token` query param.
 pub async fn destroy(
   auth: &Option<Authorization>,
   uri: &Uri,
@@ -253,14 +255,10 @@ pub struct SessionPayload {
 }
 
 pub fn parse_user_session_query(row: Row) -> Option<SessionPayload> {
-  row.try_get(0).ok().and_then(|id| {
-    row.try_get(1).ok().and_then(|name| {
-      row
-        .try_get(2)
-        .ok()
-        .map(|email| SessionPayload { id, email, name })
-    })
-  })
+  let id = row.try_get(0).ok()?;
+  let name = row.try_get(1).ok()?;
+  let email = row.try_get(2).ok()?;
+  Some(SessionPayload { id, email, name })
 }
 
 pub async fn identify(
