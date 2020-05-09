@@ -12,7 +12,7 @@ pub fn server_error<T: Serialize>(original: Error) -> Res<T> {
 }
 
 pub fn not_found<T: Serialize>() -> Res<T> {
-  Res::not_found()
+  Res::not_found(None)
 }
 
 pub fn redirect<T: Serialize>(location: String) -> Res<T> {

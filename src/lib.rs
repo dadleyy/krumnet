@@ -17,7 +17,7 @@ use std::sync::Arc;
 pub mod constants;
 
 pub mod http;
-use crate::http::{header, HeaderMap, HeaderValue, Response as Res, StatusCode, Uri};
+use crate::http::{Response as Res, StatusCode, Uri};
 
 pub mod configuration;
 use configuration::Configuration;
@@ -26,7 +26,7 @@ mod persistence;
 use persistence::RecordStore;
 
 mod authorization;
-use authorization::{Authorization, AuthorizationUrls};
+use authorization::{cors as cors_headers, Authorization, AuthorizationUrls};
 
 mod session;
 use session::SessionStore;
@@ -122,18 +122,9 @@ where
       match (head.method(), uri.path()) {
         (Some(RequestMethod::OPTIONS), _) => {
           info!("received preflight CORS request, sending headers");
-          let mut headers = HeaderMap::with_capacity(5);
-          headers.insert(
-            header::ACCESS_CONTROL_ALLOW_ORIGIN,
-            HeaderValue::from_str(&authorization.deref().cors_origin)
-              .map_err(|e| Error::new(ErrorKind::Other, e))?,
-          );
-          headers.insert(
-            header::ACCESS_CONTROL_ALLOW_HEADERS,
-            HeaderValue::from_str("Authorization").map_err(|e| Error::new(ErrorKind::Other, e))?,
-          );
-          let response = Res::Empty::<()>(StatusCode::OK, Some(headers));
-          write(&mut connection, Ok(response)).await
+          let response = cors_headers(&authorization)
+            .map(|headers| Res::Empty::<()>(StatusCode::OK, Some(headers)));
+          write(&mut connection, response).await
         }
         (Some(RequestMethod::GET), "/auth/callback") => {
           let res = auth::callback(uri, &session, &records, &authorization).await;

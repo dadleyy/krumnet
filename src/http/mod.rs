@@ -42,8 +42,8 @@ where
   pub fn json(d: HttpResponse<D>) -> Self {
     Response::Json(d)
   }
-  pub fn not_found() -> Self {
-    Response::Empty(StatusCode::NOT_FOUND, None)
+  pub fn not_found(headers: Option<HeaderMap>) -> Self {
+    Response::Empty(StatusCode::NOT_FOUND, headers)
   }
   pub fn redirect(destination: &String) -> Self {
     Response::Redirect(destination.clone())

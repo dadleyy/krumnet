@@ -1,7 +1,7 @@
 use std::io::{Error, ErrorKind};
 
 use crate::configuration::{Configuration, GoogleCredentials};
-use crate::http::Url;
+use crate::http::{header, HeaderMap, HeaderValue, Url};
 
 use crate::constants::{
   google_auth_url, google_info_url, google_token_url, GOOGLE_AUTH_CLIENT_ID_KEY,
@@ -53,4 +53,17 @@ impl AuthorizationUrls {
       callback: configuration.krumi.auth_uri.clone(),
     })
   }
+}
+
+pub fn cors(urls: &AuthorizationUrls) -> Result<HeaderMap, Error> {
+  let mut headers = HeaderMap::with_capacity(5);
+  headers.insert(
+    header::ACCESS_CONTROL_ALLOW_ORIGIN,
+    HeaderValue::from_str(&urls.cors_origin).map_err(|e| Error::new(ErrorKind::Other, e))?,
+  );
+  headers.insert(
+    header::ACCESS_CONTROL_ALLOW_HEADERS,
+    HeaderValue::from_str("Authorization").map_err(|e| Error::new(ErrorKind::Other, e))?,
+  );
+  return Ok(headers);
 }

@@ -4,13 +4,10 @@ use r2d2_postgres::postgres::row::Row;
 use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind};
 
-use crate::authorization::{Authorization, AuthorizationUrls};
+use crate::authorization::{cors as cors_headers, Authorization, AuthorizationUrls};
 use crate::configuration::GoogleCredentials;
-use crate::http::{
-  header, query as qs, Builder, HeaderValue, Method, Request, Response as Res, Uri, Url,
-};
+use crate::http::{query as qs, Builder, Method, Request, Response as Res, Uri, Url};
 use crate::persistence::{Connection as RecordConnection, RecordStore};
-use crate::routes::not_found;
 use crate::session::SessionStore;
 
 const USER_FOR_SESSION: &'static str = include_str!("data-store/load-user-for-session.sql");
@@ -215,14 +212,14 @@ pub async fn callback(
 
   let code = match qs::parse(query).find(|(key, _)| key == "code") {
     Some((_, code)) => code,
-    None => return Ok(Res::not_found()),
+    None => return Ok(Res::not_found(None)),
   };
 
   let payload = match exchange_code(&code, authorization).await {
     Ok(payload) => payload,
     Err(e) => {
       info!("[warning] unable ot exchange code: {}", e);
-      return Ok(Res::not_found());
+      return Ok(Res::not_found(None));
     }
   };
 
@@ -230,7 +227,7 @@ pub async fn callback(
     Ok(info) => info,
     Err(e) => {
       info!("[warning] unable to fetch user info: {}", e);
-      return Ok(Res::not_found());
+      return Ok(Res::not_found(None));
     }
   };
 
@@ -238,7 +235,7 @@ pub async fn callback(
     Ok(id) => id,
     Err(e) => {
       info!("[warning] unable to create/find user: {:?}", e);
-      return Ok(Res::not_found());
+      return Ok(Res::not_found(None));
     }
   };
 
@@ -273,7 +270,7 @@ pub async fn identify(
 ) -> Result<Res<SessionPayload>, Error> {
   let Authorization(uid, _, _, _) = match authorization {
     Some(auth) => auth,
-    None => return Ok(not_found()),
+    None => return Ok(Res::not_found(cors_headers(auth_urls).ok())),
   };
 
   let mut conn = records.get()?;
@@ -291,21 +288,18 @@ pub async fn identify(
 
   tenant
     .and_then(|found| {
-      Builder::new()
-        .status(200)
-        .header(
-          header::ACCESS_CONTROL_ALLOW_ORIGIN,
-          HeaderValue::from_str(&auth_urls.cors_origin).ok()?,
-        )
-        .header(
-          header::ACCESS_CONTROL_ALLOW_HEADERS,
-          HeaderValue::from_str("Authorization").ok()?,
-        )
-        .body(found)
-        .map(|res| Ok(Res::json(res)))
-        .ok()
+      let mut builder = Builder::new().status(200);
+      let cors = cors_headers(&auth_urls).ok()?;
+
+      for header in cors {
+        if let (Some(key), value) = header {
+          builder = builder.header(key, value);
+        }
+      }
+
+      builder.body(found).map(|res| Ok(Res::json(res))).ok()
     })
-    .unwrap_or(Ok(Res::not_found()))
+    .unwrap_or(Ok(Res::not_found(None)))
 }
 
 #[cfg(test)]
