@@ -17,7 +17,7 @@ use std::sync::Arc;
 pub mod constants;
 
 pub mod http;
-use crate::http::{Response as Res, Uri};
+use crate::http::{header, HeaderMap, HeaderValue, Response as Res, StatusCode, Uri};
 
 pub mod configuration;
 use configuration::Configuration;
@@ -69,7 +69,7 @@ pub async fn load_authorization<S: SessionInterface, R: RecordInterface>(
   session: S,
   records: R,
 ) -> Result<Option<Authorization>, Error> {
-  let uid = session.get(token).await?;
+  let uid = session.get(&token).await?;
   let mut conn = records.get()?;
   let tenant = conn
     .query(USER_FOR_SESSION, &[&uid])
@@ -81,7 +81,7 @@ pub async fn load_authorization<S: SessionInterface, R: RecordInterface>(
       let name = row.try_get::<_, String>(1).ok()?;
       let email = row.try_get::<_, String>(2).ok()?;
       info!("found user '{:?}' {:?} {:?}", id, name, email);
-      Some(Authorization(id, name, email))
+      Some(Authorization(id, name, email, token))
     });
 
   info!("loaded tenant from auth header: {:?}", tenant);
@@ -120,12 +120,31 @@ where
       info!("request - {} {:?}", uri.path(), auth);
 
       match (head.method(), uri.path()) {
+        (Some(RequestMethod::OPTIONS), _) => {
+          info!("received preflight CORS request, sending headers");
+          let mut headers = HeaderMap::with_capacity(5);
+          headers.insert(
+            header::ACCESS_CONTROL_ALLOW_ORIGIN,
+            HeaderValue::from_str(&authorization.deref().cors_origin)
+              .map_err(|e| Error::new(ErrorKind::Other, e))?,
+          );
+          headers.insert(
+            header::ACCESS_CONTROL_ALLOW_HEADERS,
+            HeaderValue::from_str("Authorization").map_err(|e| Error::new(ErrorKind::Other, e))?,
+          );
+          let response = Res::Empty::<()>(StatusCode::OK, Some(headers));
+          write(&mut connection, Ok(response)).await
+        }
         (Some(RequestMethod::GET), "/auth/callback") => {
           let res = auth::callback(uri, &session, &records, &authorization).await;
           write(&mut connection, res).await
         }
+        (Some(RequestMethod::GET), "/auth/destroy") => {
+          let res = auth::destroy(&auth, &uri, &session, &authorization).await;
+          write(&mut connection, res).await
+        }
         (Some(RequestMethod::GET), "/auth/identify") => {
-          let res = auth::identify(&auth, &records).await;
+          let res = auth::identify(&auth, &records, &authorization).await;
           write(&mut connection, res).await
         }
         (Some(RequestMethod::GET), "/auth/redirect") => {

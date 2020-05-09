@@ -1,12 +1,18 @@
 extern crate http;
 extern crate serde;
+extern crate url;
 
+pub use http::header;
 pub use http::header::HeaderName;
 pub use http::response::Builder;
 pub use http::status::StatusCode;
+pub use http::uri;
 pub use http::uri::Uri;
 pub use http::version::Version;
-pub use http::{HeaderValue, Method, Request};
+pub use http::{HeaderMap, HeaderValue, Method, Request};
+
+pub use url::form_urlencoded as query;
+pub use url::Url;
 
 use http::response::Response as HttpResponse;
 use log::info;
@@ -21,7 +27,7 @@ pub enum Response<D>
 where
   D: Serialize,
 {
-  Empty(StatusCode),
+  Empty(StatusCode, Option<HeaderMap>),
   Redirect(String),
   Json(HttpResponse<D>),
 }
@@ -31,16 +37,16 @@ where
   D: Serialize,
 {
   pub fn server_error() -> Self {
-    Response::Empty(StatusCode::INTERNAL_SERVER_ERROR)
+    Response::Empty(StatusCode::INTERNAL_SERVER_ERROR, None)
   }
   pub fn json(d: HttpResponse<D>) -> Self {
     Response::Json(d)
   }
   pub fn not_found() -> Self {
-    Response::Empty(StatusCode::NOT_FOUND)
+    Response::Empty(StatusCode::NOT_FOUND, None)
   }
-  pub fn redirect(destination: String) -> Self {
-    Response::Redirect(destination)
+  pub fn redirect(destination: &String) -> Self {
+    Response::Redirect(destination.clone())
   }
 }
 
@@ -50,25 +56,29 @@ where
 {
   fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
     match self {
-      Response::Empty(code) => {
-        let reason = code.canonical_reason().unwrap_or_default();
-        return write!(
-          formatter,
-          "{:?} {} {}\r\n\r\n",
-          Version::HTTP_11,
-          code,
-          reason
-        );
+      Response::Empty(code, headers) => {
+        let head = headers
+          .as_ref()
+          .map(|list| {
+            list
+              .iter()
+              .map(format_header)
+              .collect::<Vec<String>>()
+              .iter()
+              .map(|s| format!("{}\r\n", s))
+              .collect::<String>()
+          })
+          .unwrap_or_default();
+
+        return write!(formatter, "{:?} {}\r\n{}\r\n", Version::HTTP_11, code, head);
       }
       Response::Redirect(destination) => {
         let code = http::status::StatusCode::TEMPORARY_REDIRECT;
-        let reason = code.canonical_reason().unwrap_or_default();
         return write!(
           formatter,
-          "{:?} {} {}\r\nLocation: {}\r\n\r\n",
+          "{:?} {}\r\nLocation: {}\r\n\r\n",
           Version::HTTP_11,
           code,
-          reason,
           destination,
         );
       }
@@ -82,8 +92,6 @@ where
 
         let mut headers = headers.iter().map(format_header).collect::<Vec<String>>();
 
-        let reason = status.canonical_reason().unwrap_or_default();
-        let code = status.as_str();
         let payload = match serde_json::to_string(&body) {
           Ok(data) => {
             info!("serialized payload - {}", data);
@@ -108,10 +116,9 @@ where
 
         write!(
           formatter,
-          "{:?} {} {}\r\n{}\r\n{}",
+          "{:?} {}\r\n{}\r\n{}",
           version,
-          code,
-          reason,
+          status,
           head,
           payload.unwrap_or_default()
         )

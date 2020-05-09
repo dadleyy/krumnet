@@ -5,7 +5,7 @@ use async_std::net::TcpStream;
 use async_std::sync::RwLock;
 
 use jsonwebtoken::{encode, EncodingKey, Header};
-use kramer::{execute, Arity, Insertion, StringCommand};
+use kramer::{execute, Arity, Command, Insertion, StringCommand};
 use log::info;
 use serde::{Deserialize, Serialize};
 
@@ -26,6 +26,10 @@ struct SessionClaims {
 
 fn lookup_command<S: std::fmt::Display>(prefix: S, key: &String) -> StringCommand<String, String> {
   StringCommand::Get::<_, String>(Arity::One(format!("{}:{}", prefix, key)))
+}
+
+fn destroy_command<S: std::fmt::Display>(prefix: S, key: &String) -> Command<String, String> {
+  Command::Del::<_, String>(Arity::One(format!("{}:{}", prefix, key)))
 }
 
 impl SessionStore {
@@ -49,8 +53,25 @@ impl SessionStore {
     })
   }
 
-  pub async fn get(&self, key: String) -> Result<String, Error> {
-    let lookup = lookup_command(&self._session_prefix, &key);
+  pub async fn destroy(&self, key: &String) -> Result<(), Error> {
+    info!("removing key {}", key);
+    let des = destroy_command(&self._session_prefix, key);
+    let mut stream = self._stream.write().await;
+    match execute(&mut (*stream), des).await? {
+      kramer::Response::Item(kramer::ResponseValue::Integer(1)) => Ok(()),
+      kramer::Response::Item(kramer::ResponseValue::Integer(0)) => {
+        info!("unable to find session");
+        return Ok(());
+      }
+      _ => Err(Error::new(
+        ErrorKind::Other,
+        format!("Unable to find key '{}' for deletion", key),
+      )),
+    }
+  }
+
+  pub async fn get(&self, key: &String) -> Result<String, Error> {
+    let lookup = lookup_command(&self._session_prefix, key);
     let mut stream = self._stream.write().await;
 
     match execute(&mut (*stream), lookup).await? {

@@ -1,12 +1,14 @@
+use isahc::HttpClient;
 use log::info;
 use r2d2_postgres::postgres::row::Row;
 use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind};
-use url::form_urlencoded;
 
 use crate::authorization::{Authorization, AuthorizationUrls};
 use crate::configuration::GoogleCredentials;
-use crate::http::{Builder, Method, Request, Response as Res, Uri};
+use crate::http::{
+  header, query as qs, Builder, HeaderValue, Method, Request, Response as Res, Uri, Url,
+};
 use crate::persistence::{Connection as RecordConnection, RecordStore};
 use crate::routes::not_found;
 use crate::session::SessionStore;
@@ -28,13 +30,36 @@ struct UserInfoPayload {
   picture: String,
 }
 
+pub async fn destroy(
+  auth: &Option<Authorization>,
+  uri: &Uri,
+  session: &SessionStore,
+  urls: &AuthorizationUrls,
+) -> Result<Res<()>, Error> {
+  let token = auth
+    .as_ref()
+    .map(|Authorization(_, _, _, token)| token.clone())
+    .unwrap_or(
+      uri
+        .query()
+        .and_then(|q| qs::parse(q.as_bytes()).find(|(k, _k)| k == "token"))
+        .map(|(_k, v)| v.into_owned())
+        .unwrap_or_default(),
+    );
+
+  info!("destroying session from token: {}", token);
+  session.destroy(&token).await?;
+
+  Ok(Res::redirect(&urls.callback))
+}
+
 // Given the token returned from an oauth code exchange, load the user's information from the
 // google api.
 async fn fetch_info(
   authorization: TokenExchangePayload,
   urls: &AuthorizationUrls,
 ) -> Result<UserInfoPayload, Error> {
-  let client = isahc::HttpClient::new().map_err(|e| Error::new(ErrorKind::Other, e))?;
+  let client = HttpClient::new().map_err(|e| Error::new(ErrorKind::Other, e))?;
   let bearer = format!("Bearer {}", authorization.access_token);
 
   let request = Request::builder()
@@ -62,7 +87,7 @@ async fn exchange_code(
   code: &str,
   authorization: &AuthorizationUrls,
 ) -> Result<TokenExchangePayload, Error> {
-  let client = isahc::HttpClient::new().map_err(|e| Error::new(ErrorKind::Other, e))?;
+  let client = HttpClient::new().map_err(|e| Error::new(ErrorKind::Other, e))?;
   let (
     exchange_url,
     GoogleCredentials {
@@ -72,7 +97,7 @@ async fn exchange_code(
     },
   ) = &authorization.exchange;
 
-  let encoded: String = form_urlencoded::Serializer::new(String::new())
+  let encoded = qs::Serializer::new(String::new())
     .append_pair("code", code)
     .append_pair("client_id", client_id.as_str())
     .append_pair("client_secret", client_secret.as_str())
@@ -166,6 +191,17 @@ fn find_or_create_user(profile: &UserInfoPayload, records: &RecordStore) -> Resu
   }
 }
 
+fn build_krumi_callback(urls: &AuthorizationUrls, token: &String) -> Result<String, Error> {
+  let mut parsed_callback =
+    Url::parse(&urls.callback).map_err(|e| Error::new(ErrorKind::Other, e))?;
+
+  parsed_callback
+    .query_pairs_mut()
+    .append_pair("token", token);
+
+  Ok(parsed_callback.into_string())
+}
+
 // This is the route handler that is used as the redirect uri of the google client. It is
 // responsible for receiving the code from the successful oauth prompt and redirecting the user to
 // the krumpled ui.
@@ -176,7 +212,8 @@ pub async fn callback(
   authorization: &AuthorizationUrls,
 ) -> Result<Res<()>, Error> {
   let query = uri.query().unwrap_or_default().as_bytes();
-  let code = match form_urlencoded::parse(query).find(|(key, _)| key == "code") {
+
+  let code = match qs::parse(query).find(|(key, _)| key == "code") {
     Some((_, code)) => code,
     None => return Ok(Res::not_found()),
   };
@@ -206,9 +243,9 @@ pub async fn callback(
   };
 
   let token = session.create(&uid).await?;
-  info!("creating session for user id: {}", token);
+  info!("created session for token '{}'", token);
 
-  Ok(Res::redirect(authorization.callback.clone()))
+  build_krumi_callback(authorization, &token).map(|redir| Res::redirect(&redir))
 }
 
 #[derive(Debug, Serialize)]
@@ -232,8 +269,9 @@ pub fn parse_user_session_query(row: Row) -> Option<SessionPayload> {
 pub async fn identify(
   authorization: &Option<Authorization>,
   records: &RecordStore,
+  auth_urls: &AuthorizationUrls,
 ) -> Result<Res<SessionPayload>, Error> {
-  let Authorization(uid, _, _) = match authorization {
+  let Authorization(uid, _, _, _) = match authorization {
     Some(auth) => auth,
     None => return Ok(not_found()),
   };
@@ -255,6 +293,14 @@ pub async fn identify(
     .and_then(|found| {
       Builder::new()
         .status(200)
+        .header(
+          header::ACCESS_CONTROL_ALLOW_ORIGIN,
+          HeaderValue::from_str(&auth_urls.cors_origin).ok()?,
+        )
+        .header(
+          header::ACCESS_CONTROL_ALLOW_HEADERS,
+          HeaderValue::from_str("Authorization").ok()?,
+        )
         .body(found)
         .map(|res| Ok(Res::json(res)))
         .ok()

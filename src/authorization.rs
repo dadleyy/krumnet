@@ -1,7 +1,7 @@
 use std::io::{Error, ErrorKind};
-use url::Url;
 
 use crate::configuration::{Configuration, GoogleCredentials};
+use crate::http::Url;
 
 use crate::constants::{
   google_auth_url, google_info_url, google_token_url, GOOGLE_AUTH_CLIENT_ID_KEY,
@@ -10,7 +10,7 @@ use crate::constants::{
 };
 
 #[derive(Debug, Clone)]
-pub struct Authorization(pub String, pub String, pub String);
+pub struct Authorization(pub String, pub String, pub String, pub String);
 
 #[derive(Debug, Clone)]
 pub struct AuthorizationUrls {
@@ -18,6 +18,7 @@ pub struct AuthorizationUrls {
   pub exchange: (String, GoogleCredentials),
   pub identify: String,
   pub callback: String,
+  pub cors_origin: String,
 }
 
 impl AuthorizationUrls {
@@ -46,6 +47,7 @@ impl AuthorizationUrls {
 
     Ok(AuthorizationUrls {
       init: authorization_url,
+      cors_origin: configuration.krumi.cors_origin.clone(),
       identify: google_info_url(),
       exchange: (google_token_url(), configuration.google.clone()),
       callback: configuration.krumi.auth_uri.clone(),
