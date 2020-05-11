@@ -1,7 +1,7 @@
-use std::io::{Error, ErrorKind};
+use std::io::{Error, ErrorKind, Result};
 
 use crate::configuration::{Configuration, GoogleCredentials};
-use crate::http::{header, HeaderMap, HeaderValue, Url};
+use crate::http::{header, Builder, HeaderMap, HeaderValue, Url};
 
 use crate::constants::{
   google_auth_url, google_info_url, google_token_url, GOOGLE_AUTH_CLIENT_ID_KEY,
@@ -22,7 +22,7 @@ pub struct AuthorizationUrls {
 }
 
 impl AuthorizationUrls {
-  pub async fn open(configuration: &Configuration) -> Result<Self, Error> {
+  pub async fn open(configuration: &Configuration) -> Result<Self> {
     let url = google_auth_url();
 
     let mut location = url
@@ -55,8 +55,22 @@ impl AuthorizationUrls {
   }
 }
 
-pub fn cors(urls: &AuthorizationUrls) -> Result<HeaderMap, Error> {
+pub fn cors_builder(urls: &AuthorizationUrls) -> Result<Builder> {
+  let mut builder = Builder::new();
+  let cors = cors(urls)?;
+
+  for header in cors {
+    if let (Some(key), value) = header {
+      builder = builder.header(key, value);
+    }
+  }
+
+  Ok(builder)
+}
+
+pub fn cors(urls: &AuthorizationUrls) -> Result<HeaderMap> {
   let mut headers = HeaderMap::with_capacity(5);
+
   headers.insert(
     header::ACCESS_CONTROL_ALLOW_ORIGIN,
     HeaderValue::from_str(&urls.cors_origin).map_err(|e| Error::new(ErrorKind::Other, e))?,
@@ -65,5 +79,6 @@ pub fn cors(urls: &AuthorizationUrls) -> Result<HeaderMap, Error> {
     header::ACCESS_CONTROL_ALLOW_HEADERS,
     HeaderValue::from_str("Authorization").map_err(|e| Error::new(ErrorKind::Other, e))?,
   );
-  return Ok(headers);
+
+  Ok(headers)
 }

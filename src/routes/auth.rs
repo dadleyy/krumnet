@@ -4,9 +4,11 @@ use r2d2_postgres::postgres::row::Row;
 use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind, Result};
 
-use crate::authorization::{cors as cors_headers, Authorization, AuthorizationUrls};
+use crate::authorization::{
+  cors as cors_headers, cors_builder as cors, Authorization, AuthorizationUrls,
+};
 use crate::configuration::GoogleCredentials;
-use crate::http::{query as qs, Builder, Method, Request, Response as Res, Uri, Url};
+use crate::http::{query as qs, Method, Request, Response as Res, Uri, Url};
 use crate::persistence::{Connection as RecordConnection, RecordStore};
 use crate::session::SessionStore;
 
@@ -286,15 +288,7 @@ pub async fn identify(
 
   tenant
     .and_then(|found| {
-      let mut builder = Builder::new().status(200);
-      let cors = cors_headers(auth_urls).ok()?;
-
-      for header in cors {
-        if let (Some(key), value) = header {
-          builder = builder.header(key, value);
-        }
-      }
-
+      let builder = cors(auth_urls).ok()?;
       builder.body(found).map(|res| Ok(Res::json(res))).ok()
     })
     .unwrap_or(Ok(Res::not_found(None)))
