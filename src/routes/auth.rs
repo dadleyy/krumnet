@@ -9,6 +9,7 @@ use crate::authorization::{
 };
 use crate::configuration::GoogleCredentials;
 use crate::http::{query as qs, Method, Request, Response as Res, Uri, Url};
+use crate::interchange::SessionPayload;
 use crate::persistence::{Connection as RecordConnection, RecordStore};
 use crate::session::SessionStore;
 
@@ -16,11 +17,14 @@ const USER_FOR_SESSION: &'static str = include_str!("data-store/load-user-for-se
 const FIND_USER: &'static str = include_str!("data-store/find-user-by-google-id.sql");
 const CREATE_USER: &'static str = include_str!("data-store/create-user.sql");
 
+// A TokenExchangePayload represents the response received from google oauth that contains the
+// authentication token that will be used in subsequent requests on behalf of this user.
 #[derive(Debug, PartialEq, Deserialize)]
 struct TokenExchangePayload {
   access_token: String,
 }
 
+// The UserInfoPayload represents the data received from the google profile api.
 #[derive(Debug, Clone, Deserialize, Default, Serialize)]
 struct UserInfoPayload {
   name: String,
@@ -247,13 +251,6 @@ pub async fn callback(
   info!("created session for token '{}'", token);
 
   build_krumi_callback(authorization, &token).map(|redir| Res::redirect(&redir))
-}
-
-#[derive(Debug, Serialize)]
-pub struct SessionPayload {
-  pub id: String,
-  pub email: String,
-  pub name: String,
 }
 
 pub fn parse_user_session_query(row: Row) -> Option<SessionPayload> {

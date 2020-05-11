@@ -28,6 +28,8 @@ use persistence::RecordStore;
 mod authorization;
 use authorization::{cors as cors_headers, Authorization, AuthorizationUrls};
 
+mod interchange;
+
 mod session;
 use session::SessionStore;
 
