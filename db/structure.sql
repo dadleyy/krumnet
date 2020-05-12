@@ -17,6 +17,22 @@ drop table if exists users cascade;
 create table users (
   id varchar unique default uuid_generate_v4() PRIMARY KEY,
   default_email varchar unique not null,
-  name varchar not null
+  name varchar not null,
+  created_at timestamp default now()
 );
 
+drop table if exists lobbies cascade;
+
+create table lobbies (
+  id varchar unique default uuid_generate_v4() PRIMARY KEY,
+  created_at timestamp default now()
+);
+
+drop table if exists lobby_memberships cascade;
+
+create table lobby_memberships (
+  id varchar unique default uuid_generate_v4() PRIMARY KEY,
+  user_id varchar references users(id) not null,
+  permissions bit(10) not null,
+  created_at timestamp default now()
+);

@@ -186,3 +186,90 @@ pub async fn run(configuration: Configuration) -> Result<(), Error> {
 
   Ok(())
 }
+
+#[cfg(test)]
+mod test {
+  use async_std::io::Write;
+  use async_std::task::{block_on, Context, Poll};
+  use std::io::{Error, ErrorKind};
+  use std::pin::Pin;
+
+  use crate::http::Response;
+  use crate::write as write_response;
+
+  struct AsyncStringBuffer {
+    contents: String,
+  }
+
+  impl AsyncStringBuffer {
+    pub fn new() -> Self {
+      AsyncStringBuffer {
+        contents: String::new(),
+      }
+    }
+  }
+
+  impl Write for AsyncStringBuffer {
+    fn poll_write(
+      mut self: Pin<&mut Self>,
+      _context: &mut Context,
+      data: &[u8],
+    ) -> Poll<Result<usize, Error>> {
+      match std::str::from_utf8(data) {
+        Ok(parsed) => {
+          self.contents.push_str(parsed);
+          Poll::Ready(Ok(data.len()))
+        }
+        Err(e) => Poll::Ready(Err(Error::new(ErrorKind::Other, e))),
+      }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _context: &mut Context) -> Poll<Result<(), Error>> {
+      Poll::Ready(Ok(()))
+    }
+
+    fn poll_close(self: Pin<&mut Self>, _context: &mut Context) -> Poll<Result<(), Error>> {
+      Poll::Ready(Ok(()))
+    }
+  }
+
+  #[test]
+  fn write_redirect() {
+    let mut buffer = AsyncStringBuffer::new();
+    let result = block_on(async {
+      let dest = String::from("http://github.com/krumpled/krumnet");
+      let out = Ok(Response::redirect(&dest));
+      write_response::<_, ()>(&mut buffer, out).await
+    });
+    assert!(result.is_ok());
+    assert_eq!(
+      buffer.contents,
+      "HTTP/1.1 307 Temporary Redirect\r\nLocation: http://github.com/krumpled/krumnet\r\n\r\n",
+    );
+  }
+
+  #[test]
+  fn write_not_found() {
+    let mut buffer = AsyncStringBuffer::new();
+    let result = block_on(async {
+      let out = Ok(Response::not_found(None));
+      write_response::<_, ()>(&mut buffer, out).await
+    });
+    assert!(result.is_ok());
+    assert_eq!(buffer.contents, "HTTP/1.1 404 Not Found\r\n\r\n");
+  }
+
+  #[test]
+  fn write_server_error() {
+    let mut buffer = AsyncStringBuffer::new();
+    let result = block_on(async {
+      let err = Err(Error::new(ErrorKind::Other, ""));
+      write_response::<_, ()>(&mut buffer, err).await
+    });
+    assert!(result.is_ok());
+    assert_eq!(
+      buffer.contents,
+      "HTTP/1.1 500 Internal Server Error\r\n\r\n",
+    );
+  }
+}

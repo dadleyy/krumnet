@@ -299,11 +299,9 @@ mod test {
   #[test]
   fn existing_user_ok() {
     let config = load_config();
-    println!("config: {:?}", config);
     assert!(config.is_ok());
     let unwrapped = config.unwrap();
     let records = RecordStore::open(&unwrapped);
-    println!("records: {:?}", records);
     assert!(records.is_ok());
   }
 }
