@@ -8,6 +8,7 @@ use crate::authorization::{
   cors as cors_headers, cors_builder as cors, Authorization, AuthorizationUrls,
 };
 use crate::configuration::GoogleCredentials;
+use crate::context::Context;
 use crate::errors;
 use crate::http::{query as qs, Method, Request, Response as Res, Uri, Url};
 use crate::interchange::SessionPayload;
@@ -36,13 +37,9 @@ struct UserInfoPayload {
 
 // Destroy is a route handler that will attempt to delete the session associated with the token
 // provided in the authorization header _or_ as a `token` query param.
-pub async fn destroy(
-  auth: &Option<Authorization>,
-  uri: &Uri,
-  session: &SessionStore,
-  urls: &AuthorizationUrls,
-) -> Result<Res<()>> {
-  let token = auth
+pub async fn destroy(context: &Context<'_>, uri: &Uri) -> Result<Res<()>> {
+  let token = context
+    .auth()
     .as_ref()
     .map(|Authorization(_, _, _, token)| token.clone())
     .unwrap_or(
@@ -54,9 +51,9 @@ pub async fn destroy(
     );
 
   info!("destroying session from token: {}", token);
-  session.destroy(&token).await?;
+  context.session().destroy(&token).await?;
 
-  Ok(Res::redirect(&urls.callback))
+  Ok(Res::redirect(&context.urls().callback))
 }
 
 // Given the token returned from an oauth code exchange, load the user's information from the
@@ -253,17 +250,14 @@ pub fn parse_user_session_query(row: Row) -> Option<SessionPayload> {
   Some(SessionPayload { id, email, name })
 }
 
-pub async fn identify(
-  authorization: &Option<Authorization>,
-  records: &RecordStore,
-  auth_urls: &AuthorizationUrls,
-) -> Result<Res<SessionPayload>> {
-  let Authorization(uid, _, _, _) = match authorization {
+pub async fn identify(context: &Context<'_>) -> Result<Res<SessionPayload>> {
+  let Authorization(uid, _, _, _) = match context.auth() {
     Some(auth) => auth,
-    None => return Ok(Res::not_found(cors_headers(auth_urls).ok())),
+    None => return Ok(Res::not_found(cors_headers(context.urls()).ok())),
   };
 
-  let tenant = records
+  let tenant = context
+    .records()
     .query(USER_FOR_SESSION, &[&uid])
     .ok()
     .and_then(|mut rows| rows.pop())
@@ -276,7 +270,7 @@ pub async fn identify(
 
   tenant
     .and_then(|found| {
-      let builder = cors(auth_urls).ok()?;
+      let builder = cors(context.urls()).ok()?;
       builder.body(found).map(|res| Ok(Res::json(res))).ok()
     })
     .unwrap_or(Ok(Res::not_found(None)))
@@ -297,6 +291,7 @@ mod test {
 
     block_on(async {
       let records = RecordStore::open(&unwrapped).await;
+      println!("record result: {:?}", records);
       assert!(records.is_ok());
     });
   }

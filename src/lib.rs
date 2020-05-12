@@ -28,6 +28,9 @@ use persistence::RecordStore;
 mod authorization;
 use authorization::{cors as cors_headers, Authorization, AuthorizationUrls};
 
+mod context;
+use context::Context;
+
 mod errors;
 mod interchange;
 
@@ -126,7 +129,8 @@ where
           write(&mut connection, response).await
         }
         (Some(RequestMethod::POST), "/provision-lobby") => {
-          let response = lobbies::provision(&auth, &records, &authorization).await;
+          let ctx = context::for_request(session, records, authorization, head).await?;
+          let response = lobbies::provision(&ctx).await;
           write(&mut connection, response).await
         }
         (Some(RequestMethod::GET), "/auth/callback") => {
@@ -134,11 +138,13 @@ where
           write(&mut connection, res).await
         }
         (Some(RequestMethod::GET), "/auth/destroy") => {
-          let res = auth::destroy(&auth, &uri, &session, &authorization).await;
+          let ctx = context::for_request(session, records, authorization, head).await?;
+          let res = auth::destroy(&ctx, &uri).await;
           write(&mut connection, res).await
         }
         (Some(RequestMethod::GET), "/auth/identify") => {
-          let res = auth::identify(&auth, &records, &authorization).await;
+          let ctx = context::for_request(session, records, authorization, head).await?;
+          let res = auth::identify(&ctx).await;
           write(&mut connection, res).await
         }
         (Some(RequestMethod::GET), "/auth/redirect") => {
