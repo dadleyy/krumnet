@@ -25,6 +25,12 @@ drop table if exists lobbies cascade;
 
 create table lobbies (
   id varchar unique default uuid_generate_v4() PRIMARY KEY,
+  name varchar not null,
+  settings bit(10) not null, /*
+  * | bit  | significance   |
+  * | ---- | -------------  |
+  * | 1    | public/private |
+  */
   created_at timestamp default now()
 );
 
@@ -33,6 +39,27 @@ drop table if exists lobby_memberships cascade;
 create table lobby_memberships (
   id varchar unique default uuid_generate_v4() PRIMARY KEY,
   user_id varchar references users(id) not null,
+  lobby_id varchar references lobbies(id) not null,
+  permissions bit(10) not null,
+  joined_at timestamp default now(),
+  left_at timestamp
+);
+
+drop table if exists games cascade;
+
+create table games (
+  id varchar unique default uuid_generate_v4() PRIMARY KEY,
+  lobby_id varchar references lobbies(id) not null,
+  created_at timestamp default now()
+);
+
+drop table if exists game_memberships cascade;
+
+create table game_memberships (
+  id varchar unique default uuid_generate_v4() PRIMARY KEY,
+  user_id varchar references users(id) not null,
+  game_id varchar references games(id) not null,
   permissions bit(10) not null,
   created_at timestamp default now()
 );
+
