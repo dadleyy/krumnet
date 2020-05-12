@@ -8,9 +8,10 @@ use crate::authorization::{
   cors as cors_headers, cors_builder as cors, Authorization, AuthorizationUrls,
 };
 use crate::configuration::GoogleCredentials;
+use crate::errors;
 use crate::http::{query as qs, Method, Request, Response as Res, Uri, Url};
 use crate::interchange::SessionPayload;
-use crate::persistence::{Connection as RecordConnection, RecordStore};
+use crate::persistence::RecordStore;
 use crate::session::SessionStore;
 
 const USER_FOR_SESSION: &'static str = include_str!("data-store/load-user-for-session.sql");
@@ -64,7 +65,7 @@ async fn fetch_info(
   authorization: TokenExchangePayload,
   urls: &AuthorizationUrls,
 ) -> Result<UserInfoPayload> {
-  let client = HttpClient::new().map_err(|e| Error::new(ErrorKind::Other, e))?;
+  let client = HttpClient::new().map_err(errors::humanize_error)?;
   let bearer = format!("Bearer {}", authorization.access_token);
 
   let request = Request::builder()
@@ -72,11 +73,11 @@ async fn fetch_info(
     .uri(&urls.identify)
     .header("Authorization", bearer.as_str())
     .body(())
-    .map_err(|e| Error::new(ErrorKind::Other, e))?;
+    .map_err(errors::humanize_error)?;
 
   match client.send(request) {
     Ok(mut response) if response.status() == 200 => {
-      serde_json::from_reader(response.body_mut()).map_err(|e| Error::new(ErrorKind::Other, e))
+      serde_json::from_reader(response.body_mut()).map_err(errors::humanize_error)
     }
     Ok(response) => Err(Error::new(
       ErrorKind::Other,
@@ -92,7 +93,7 @@ async fn exchange_code(
   code: &str,
   authorization: &AuthorizationUrls,
 ) -> Result<TokenExchangePayload> {
-  let client = HttpClient::new().map_err(|e| Error::new(ErrorKind::Other, e))?;
+  let client = HttpClient::new().map_err(errors::humanize_error)?;
   let (
     exchange_url,
     GoogleCredentials {
@@ -137,20 +138,16 @@ async fn exchange_code(
 
 // Given user information loaded from the api, attempt to save the information into the persistence
 // engine, returning the newly created system id if successful.
-fn make_user(details: &UserInfoPayload, conn: &mut RecordConnection) -> Result<String> {
+fn make_user(details: &UserInfoPayload, conn: &RecordStore) -> Result<String> {
   let UserInfoPayload {
     email,
     name,
     sub,
     picture: _,
   } = details;
-  conn
-    .execute(CREATE_USER, &[&email, &name, &email, &name, &sub])
-    .map_err(|e| Error::new(ErrorKind::Other, e))?;
 
-  let tenant = conn
-    .query(FIND_USER, &[&sub])
-    .map_err(|e| Error::new(ErrorKind::Other, e))?;
+  conn.execute(CREATE_USER, &[&email, &name, &email, &name, &sub])?;
+  let tenant = conn.query(FIND_USER, &[&sub])?;
 
   match tenant.iter().nth(0) {
     Some(row) => match row.try_get::<_, String>(0) {
@@ -171,12 +168,9 @@ fn make_user(details: &UserInfoPayload, conn: &mut RecordConnection) -> Result<S
 // find by the email address and make sure to backfill the google account. If there is still no
 // matching user information, attempt to create a new user and google account.
 fn find_or_create_user(profile: &UserInfoPayload, records: &RecordStore) -> Result<String> {
-  let mut conn = records.get()?;
-  info!("loaded user info: {:?}", profile);
+  let tenant = records.query(FIND_USER, &[&profile.sub])?;
 
-  let tenant = conn
-    .query(FIND_USER, &[&profile.sub])
-    .map_err(|e| Error::new(ErrorKind::Other, e))?;
+  info!("loaded user info: {:?}", profile);
 
   match tenant.iter().nth(0) {
     Some(row) => match row.try_get::<_, String>(0) {
@@ -191,14 +185,13 @@ fn find_or_create_user(profile: &UserInfoPayload, records: &RecordStore) -> Resu
     },
     None => {
       info!("no matching user, creating");
-      make_user(&profile, &mut conn)
+      make_user(&profile, records)
     }
   }
 }
 
 fn build_krumi_callback(urls: &AuthorizationUrls, token: &String) -> Result<String> {
-  let mut parsed_callback =
-    Url::parse(&urls.callback).map_err(|e| Error::new(ErrorKind::Other, e))?;
+  let mut parsed_callback = Url::parse(&urls.callback).map_err(errors::humanize_error)?;
 
   parsed_callback
     .query_pairs_mut()
@@ -270,9 +263,7 @@ pub async fn identify(
     None => return Ok(Res::not_found(cors_headers(auth_urls).ok())),
   };
 
-  let mut conn = records.get()?;
-
-  let tenant = conn
+  let tenant = records
     .query(USER_FOR_SESSION, &[&uid])
     .ok()
     .and_then(|mut rows| rows.pop())
@@ -296,12 +287,17 @@ mod test {
   use crate::configuration::test_helpers::load_config;
   use crate::persistence::RecordStore;
 
+  use async_std::task::block_on;
+
   #[test]
   fn existing_user_ok() {
     let config = load_config();
     assert!(config.is_ok());
     let unwrapped = config.unwrap();
-    let records = RecordStore::open(&unwrapped);
-    assert!(records.is_ok());
+
+    block_on(async {
+      let records = RecordStore::open(&unwrapped).await;
+      assert!(records.is_ok());
+    });
   }
 }

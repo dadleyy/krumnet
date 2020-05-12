@@ -1,15 +1,18 @@
-use r2d2::{Pool as ConnectionPool, PooledConnection};
-use r2d2_postgres::postgres::NoTls;
-use r2d2_postgres::PostgresConnectionManager as Postgres;
-use std::io::{Error, ErrorKind};
+use std::io::{Error, ErrorKind, Result};
 use std::time::Duration;
 
-use crate::Configuration;
+use async_std::net::TcpStream;
+use async_std::sync::RwLock;
+use r2d2::Pool as ConnectionPool;
+use r2d2_postgres::postgres::types::ToSql;
+use r2d2_postgres::postgres::{NoTls, Row, ToStatement};
+use r2d2_postgres::PostgresConnectionManager as Postgres;
 
-pub type Connection = PooledConnection<Postgres<NoTls>>;
+use crate::{errors, Configuration};
 
 pub struct RecordStore {
-  pool: ConnectionPool<Postgres<NoTls>>,
+  _pool: ConnectionPool<Postgres<NoTls>>,
+  _stream: RwLock<TcpStream>,
 }
 
 impl std::fmt::Debug for RecordStore {
@@ -19,7 +22,7 @@ impl std::fmt::Debug for RecordStore {
 }
 
 impl RecordStore {
-  pub fn open<C>(config: C) -> Result<Self, Error>
+  pub async fn open<C>(config: C) -> Result<Self>
   where
     C: std::ops::Deref<Target = Configuration>,
   {
@@ -29,6 +32,7 @@ impl RecordStore {
       .as_str()
       .parse()
       .map_err(|e| Error::new(ErrorKind::Other, e))?;
+
     let manager = Postgres::new(parsed_config, NoTls);
 
     let pool = ConnectionPool::builder()
@@ -36,10 +40,25 @@ impl RecordStore {
       .build(manager)
       .map_err(|e| Error::new(ErrorKind::Other, e))?;
 
-    Ok(RecordStore { pool })
+    let stream = TcpStream::connect(config.record_store.redis_uri.as_str()).await?;
+
+    Ok(RecordStore {
+      _pool: pool,
+      _stream: RwLock::new(stream),
+    })
   }
 
-  pub fn get(&self) -> Result<Connection, Error> {
-    self.pool.get().map_err(|e| Error::new(ErrorKind::Other, e))
+  pub fn execute<T: ToStatement + ?Sized>(&self, q: &T, p: &[&(dyn ToSql + Sync)]) -> Result<u64> {
+    let mut conn = self._pool.get().map_err(errors::humanize_error)?;
+    conn.execute(q, p).map_err(errors::humanize_error)
+  }
+
+  pub fn query<T: ToStatement + ?Sized>(
+    &self,
+    q: &T,
+    p: &[&(dyn ToSql + Sync)],
+  ) -> Result<Vec<Row>> {
+    let mut conn = self._pool.get().map_err(errors::humanize_error)?;
+    conn.query(q, p).map_err(errors::humanize_error)
   }
 }

@@ -10,7 +10,7 @@ use async_std::task;
 use elaine::{recognize, RequestMethod};
 use log::info;
 use serde::Serialize;
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 use std::marker::Unpin;
 use std::sync::Arc;
 
@@ -28,13 +28,14 @@ use persistence::RecordStore;
 mod authorization;
 use authorization::{cors as cors_headers, Authorization, AuthorizationUrls};
 
+mod errors;
 mod interchange;
 
 mod session;
 use session::SessionStore;
 
 mod routes;
-use routes::{auth, not_found, redirect, server_error};
+use routes::{auth, lobbies, not_found, redirect, server_error};
 
 const USER_FOR_SESSION: &'static str = include_str!("data-store/user-for-session.sql");
 
@@ -72,10 +73,8 @@ pub async fn load_authorization<S: SessionInterface, R: RecordInterface>(
   records: R,
 ) -> Result<Option<Authorization>, Error> {
   let uid = session.get(&token).await?;
-  let mut conn = records.get()?;
-  let tenant = conn
-    .query(USER_FOR_SESSION, &[&uid])
-    .map_err(|e| Error::new(ErrorKind::Other, e))?
+  let tenant = records
+    .query(USER_FOR_SESSION, &[&uid])?
     .iter()
     .nth(0)
     .and_then(|row| {
@@ -106,9 +105,7 @@ where
   let head = recognize(&mut connection).await?;
   match head.path() {
     Some(path) => {
-      let uri = path
-        .parse::<Uri>()
-        .map_err(|e| Error::new(ErrorKind::Other, e))?;
+      let uri = path.parse::<Uri>().map_err(errors::humanize_error)?;
 
       let auth = match head.find_header("Authorization") {
         Some(key) => load_authorization(key, session.deref(), records.deref()).await,
@@ -126,6 +123,10 @@ where
           info!("received preflight CORS request, sending headers");
           let response = cors_headers(&authorization)
             .map(|headers| Res::Empty::<()>(StatusCode::OK, Some(headers)));
+          write(&mut connection, response).await
+        }
+        (Some(RequestMethod::POST), "/provision-lobby") => {
+          let response = lobbies::provision(&auth, &records, &authorization).await;
           write(&mut connection, response).await
         }
         (Some(RequestMethod::GET), "/auth/callback") => {
@@ -156,7 +157,7 @@ pub async fn run(configuration: Configuration) -> Result<(), Error> {
   let mut incoming = listener.incoming();
 
   info!("connecting to record store");
-  let records = Arc::new(RecordStore::open(&configuration)?);
+  let records = Arc::new(RecordStore::open(&configuration).await?);
 
   info!("connecting to session store");
   let session = Arc::new(SessionStore::open(&configuration).await?);
