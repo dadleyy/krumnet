@@ -13,7 +13,6 @@ use crate::errors;
 use crate::http::{query as qs, Method, Request, Response as Res, Uri, Url};
 use crate::interchange::SessionPayload;
 use crate::persistence::RecordStore;
-use crate::session::SessionStore;
 
 const USER_FOR_SESSION: &'static str = include_str!("data-store/load-user-for-session.sql");
 const FIND_USER: &'static str = include_str!("data-store/find-user-by-google-id.sql");
@@ -200,12 +199,7 @@ fn build_krumi_callback(urls: &AuthorizationUrls, token: &String) -> Result<Stri
 // This is the route handler that is used as the redirect uri of the google client. It is
 // responsible for receiving the code from the successful oauth prompt and redirecting the user to
 // the krumpled ui.
-pub async fn callback(
-  uri: Uri,
-  session: &SessionStore,
-  records: &RecordStore,
-  authorization: &AuthorizationUrls,
-) -> Result<Res<()>> {
+pub async fn callback(context: &Context<'_>, uri: &Uri) -> Result<Res<()>> {
   let query = uri.query().unwrap_or_default().as_bytes();
 
   let code = match qs::parse(query).find(|(key, _)| key == "code") {
@@ -213,7 +207,7 @@ pub async fn callback(
     None => return Ok(Res::not_found(None)),
   };
 
-  let payload = match exchange_code(&code, authorization).await {
+  let payload = match exchange_code(&code, context.urls()).await {
     Ok(payload) => payload,
     Err(e) => {
       info!("[warning] unable ot exchange code: {}", e);
@@ -221,7 +215,7 @@ pub async fn callback(
     }
   };
 
-  let profile = match fetch_info(payload, authorization).await {
+  let profile = match fetch_info(payload, context.urls()).await {
     Ok(info) => info,
     Err(e) => {
       info!("[warning] unable to fetch user info: {}", e);
@@ -229,7 +223,7 @@ pub async fn callback(
     }
   };
 
-  let uid = match find_or_create_user(&profile, records) {
+  let uid = match find_or_create_user(&profile, context.records()) {
     Ok(id) => id,
     Err(e) => {
       info!("[warning] unable to create/find user: {:?}", e);
@@ -237,10 +231,10 @@ pub async fn callback(
     }
   };
 
-  let token = session.create(&uid).await?;
+  let token = context.session().create(&uid).await?;
   info!("created session for token '{}'", token);
 
-  build_krumi_callback(authorization, &token).map(|redir| Res::redirect(&redir))
+  build_krumi_callback(context.urls(), &token).map(|redir| Res::redirect(&redir))
 }
 
 pub fn parse_user_session_query(row: Row) -> Option<SessionPayload> {

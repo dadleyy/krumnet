@@ -40,14 +40,6 @@ use session::SessionStore;
 mod routes;
 use routes::{auth, lobbies, not_found, redirect, server_error};
 
-const USER_FOR_SESSION: &'static str = include_str!("data-store/user-for-session.sql");
-
-pub trait SessionInterface: std::ops::Deref<Target = SessionStore> {}
-impl<T> SessionInterface for T where T: std::ops::Deref<Target = SessionStore> {}
-
-pub trait RecordInterface: std::ops::Deref<Target = RecordStore> {}
-impl<T> RecordInterface for T where T: std::ops::Deref<Target = RecordStore> {}
-
 // Given a response, writes it to our connection.
 async fn write<C, D>(mut writer: C, data: Result<Res<D>, Error>) -> Result<(), Error>
 where
@@ -68,30 +60,6 @@ where
     .map(|_| ())
 }
 
-// Attempts to exchange an authorization token for a user id from the session store, subsequently
-// loading the actual user information from the record store.
-pub async fn load_authorization<S: SessionInterface, R: RecordInterface>(
-  token: String,
-  session: S,
-  records: R,
-) -> Result<Option<Authorization>, Error> {
-  let uid = session.get(&token).await?;
-  let tenant = records
-    .query(USER_FOR_SESSION, &[&uid])?
-    .iter()
-    .nth(0)
-    .and_then(|row| {
-      let id = row.try_get::<_, String>(0).ok()?;
-      let name = row.try_get::<_, String>(1).ok()?;
-      let email = row.try_get::<_, String>(2).ok()?;
-      info!("found user '{:?}' {:?} {:?}", id, name, email);
-      Some(Authorization(id, name, email, token))
-    });
-
-  info!("loaded tenant from auth header: {:?}", tenant);
-  Ok(tenant)
-}
-
 // Called for each new connection to the server, this is where requests are routed.
 async fn handle<T, S, R, A>(
   mut connection: T,
@@ -101,8 +69,8 @@ async fn handle<T, S, R, A>(
 ) -> Result<(), Error>
 where
   T: AsyncRead + AsyncWrite + Unpin,
-  S: SessionInterface,
-  R: RecordInterface,
+  S: context::SessionInterface,
+  R: context::RecordInterface,
   A: std::ops::Deref<Target = AuthorizationUrls>,
 {
   let head = recognize(&mut connection).await?;
@@ -110,16 +78,7 @@ where
     Some(path) => {
       let uri = path.parse::<Uri>().map_err(errors::humanize_error)?;
 
-      let auth = match head.find_header("Authorization") {
-        Some(key) => load_authorization(key, session.deref(), records.deref()).await,
-        None => Ok(None),
-      }
-      .unwrap_or_else(|e| {
-        info!("unable to load authorization - {}", e);
-        None
-      });
-
-      info!("request - {} {:?}", uri.path(), auth);
+      info!("request - {}", uri.path());
 
       match (head.method(), uri.path()) {
         (Some(RequestMethod::OPTIONS), _) => {
@@ -134,7 +93,8 @@ where
           write(&mut connection, response).await
         }
         (Some(RequestMethod::GET), "/auth/callback") => {
-          let res = auth::callback(uri, &session, &records, &authorization).await;
+          let ctx = context::for_request(session, records, authorization, head).await?;
+          let res = auth::callback(&ctx, &uri).await;
           write(&mut connection, res).await
         }
         (Some(RequestMethod::GET), "/auth/destroy") => {
