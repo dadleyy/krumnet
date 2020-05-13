@@ -10,7 +10,7 @@ use crate::context::StaticContext;
 use crate::errors;
 use crate::http::{header, query as qs, Method, Request, Response as Res, Uri, Url};
 use crate::interchange::http::{SessionData, SessionUserData};
-use crate::persistence::RecordStore;
+use crate::records::RecordStore;
 
 const USER_FOR_SESSION: &'static str = include_str!("data-store/load-user-for-session.sql");
 const FIND_USER: &'static str = include_str!("data-store/find-user-by-google-id.sql");

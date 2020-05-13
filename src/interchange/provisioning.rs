@@ -12,5 +12,6 @@ pub enum ProvisioningAttemptAuthority {
 pub enum ProvisioningAttempt {
   Lobby {
     authority: ProvisioningAttemptAuthority,
+    result: Option<Result<String, String>>,
   },
 }

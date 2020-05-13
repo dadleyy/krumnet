@@ -3,7 +3,7 @@ use gumdrop::{parse_args_default_or_exit, Options as Gumdrop};
 use log::info;
 use std::io::Result;
 
-use krumnet::{Configuration, RecordStore};
+use krumnet::{Configuration, Provisioner};
 
 #[derive(Debug, Gumdrop)]
 struct Options {
@@ -25,7 +25,7 @@ fn main() -> Result<()> {
 
   block_on(async {
     info!("starting worker process");
-    let records = RecordStore::open(&opts.config).await?;
+    let records = Provisioner::open(&opts.config).await?;
     info!("record store opened successfully, starting worker");
 
     loop {

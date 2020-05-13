@@ -20,10 +20,7 @@ pub mod http;
 use crate::http::{Response as Res, StatusCode, Uri};
 
 pub mod configuration;
-pub use configuration::Configuration;
-
-mod persistence;
-pub use persistence::RecordStore;
+pub use configuration::{Configuration, GoogleCredentials};
 
 mod authorization;
 use authorization::{Authorization, AuthorizationUrls};
@@ -36,6 +33,9 @@ mod interchange;
 
 mod session;
 use session::SessionStore;
+
+mod records;
+pub use records::{Provisioner, RecordStore};
 
 mod routes;
 use routes::{auth, lobbies, not_found, redirect, server_error};
@@ -114,6 +114,7 @@ pub async fn run(configuration: Configuration) -> Result<(), Error> {
 
   info!("connecting to record store");
   let records = Arc::new(RecordStore::open(&configuration).await?);
+  let provisioner = Arc::new(Provisioner::open(&configuration).await?);
 
   info!("connecting to session store");
   let session = Arc::new(SessionStore::open(&configuration).await?);
@@ -128,6 +129,7 @@ pub async fn run(configuration: Configuration) -> Result<(), Error> {
         let ctx = StaticContextBuilder::new()
           .session(session.clone())
           .records(records.clone())
+          .provisioner(provisioner.clone())
           .urls(authorization_urls.clone());
 
         task::spawn(async {

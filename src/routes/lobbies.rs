@@ -20,8 +20,11 @@ pub async fn provision(context: &StaticContext) -> Result<Response<ProvisioningA
   };
 
   let authority = ProvisioningAttemptAuthority::User { id: uid.clone() };
-  let attempt = ProvisioningAttempt::Lobby { authority };
-  let result = context.records().queue(attempt).await?;
+  let attempt = ProvisioningAttempt::Lobby {
+    authority,
+    result: None,
+  };
+  let result = context.provisioner().queue(attempt).await?;
   info!("command result: {:?}", result);
 
   builder

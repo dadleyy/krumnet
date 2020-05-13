@@ -34,8 +34,10 @@ jobs:
         run: rustup toolchain install beta
       - name: Rustup use beta
         run: rustup default beta
-      - name: Build
+      - name: Build main
         run: cargo build
+      - name: Build worker
+        run: cargo build --bin kruwk
       - name: Run tests
         run: cargo test --verbose -- --nocapture
         env:

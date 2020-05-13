@@ -1,22 +1,17 @@
 use std::fmt::Display;
-use std::io::{Error, ErrorKind, Result};
-use std::time::Duration;
+use std::io::Result;
 
 use log::info;
 
 use async_std::net::TcpStream;
 use async_std::sync::RwLock;
 use kramer::{Arity, Command, HashCommand, Insertion, ListCommand, Response, ResponseValue, Side};
-use r2d2::Pool as ConnectionPool;
-use r2d2_postgres::postgres::types::ToSql;
-use r2d2_postgres::postgres::{NoTls, Row, ToStatement};
-use r2d2_postgres::PostgresConnectionManager as Postgres;
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str as deserialize, to_string as serialize};
 use uuid::Uuid;
 
 use crate::interchange::provisioning::ProvisioningAttempt;
-use crate::{errors, Configuration};
+use crate::Configuration;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "snake_case")]
@@ -25,50 +20,22 @@ pub struct QueuedProvisioningAttempt {
   attempt: ProvisioningAttempt,
 }
 
-pub struct RecordStore {
-  _storage_keys: (String, String),
-  _pool: ConnectionPool<Postgres<NoTls>>,
+pub struct Provisioner {
   _stream: RwLock<TcpStream>,
+  _keys: (String, String),
 }
 
-impl std::fmt::Debug for RecordStore {
-  fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-    write!(formatter, "RecordStore")
-  }
-}
-
-impl RecordStore {
+impl Provisioner {
   pub async fn open<C>(config: C) -> Result<Self>
   where
     C: std::ops::Deref<Target = Configuration>,
   {
-    let parsed_config = config
-      .record_store
-      .postgres_uri
-      .as_str()
-      .parse()
-      .map_err(|e| Error::new(ErrorKind::Other, e))?;
-
-    let manager = Postgres::new(parsed_config, NoTls);
-
-    let pool = ConnectionPool::builder()
-      .connection_timeout(Duration::new(1, 0))
-      .build(manager)
-      .map_err(|e| Error::new(ErrorKind::Other, e))?;
-
     let stream = TcpStream::connect(config.record_store.redis_uri.as_str()).await?;
     let queue = config.record_store.provisioning_queue.clone();
     let map = config.record_store.provisioning_map.clone();
-
-    info!(
-      "record store initialized w/ provisioning queue '{}' & map '{}'",
-      queue, map
-    );
-
-    Ok(RecordStore {
-      _pool: pool,
+    Ok(Provisioner {
+      _keys: (queue, map),
       _stream: RwLock::new(stream),
-      _storage_keys: (queue, map),
     })
   }
 
@@ -78,7 +45,7 @@ impl RecordStore {
   }
 
   async fn dequeue_next_id(&self) -> Result<Option<String>> {
-    let (queue_key, _) = &self._storage_keys;
+    let (queue_key, _) = &self._keys;
     let cmd = Command::List::<_, &str>(ListCommand::Pop(Side::Left, queue_key, Some((None, 10))));
     let res = self.command(&cmd).await?;
 
@@ -100,7 +67,7 @@ impl RecordStore {
   }
 
   async fn deserialize_entry(&self, id: &String) -> Result<Option<QueuedProvisioningAttempt>> {
-    let (_, map_key) = &self._storage_keys;
+    let (_, map_key) = &self._keys;
     let lookup = Command::Hashes::<_, &str>(HashCommand::Get(map_key, Some(Arity::One(id))));
     let res = self.command(&lookup).await?;
 
@@ -126,7 +93,7 @@ impl RecordStore {
   }
 
   pub async fn queue(&self, attempt: ProvisioningAttempt) -> Result<String> {
-    let (queue_key, map_key) = &self._storage_keys;
+    let (queue_key, map_key) = &self._keys;
 
     let queued = QueuedProvisioningAttempt {
       id: Uuid::new_v4().to_string(),
@@ -151,19 +118,5 @@ impl RecordStore {
     self.command(&queue_cmd).await?;
 
     Ok(queued.id)
-  }
-
-  pub fn execute<T: ToStatement + ?Sized>(&self, q: &T, p: &[&(dyn ToSql + Sync)]) -> Result<u64> {
-    let mut conn = self._pool.get().map_err(errors::humanize_error)?;
-    conn.execute(q, p).map_err(errors::humanize_error)
-  }
-
-  pub fn query<T: ToStatement + ?Sized>(
-    &self,
-    q: &T,
-    p: &[&(dyn ToSql + Sync)],
-  ) -> Result<Vec<Row>> {
-    let mut conn = self._pool.get().map_err(errors::humanize_error)?;
-    conn.query(q, p).map_err(errors::humanize_error)
   }
 }

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::errors::humanize_error;
 use crate::http::{header, HeaderMap, HeaderValue};
-use crate::{Authorization, AuthorizationUrls, RecordStore, SessionStore};
+use crate::{Authorization, AuthorizationUrls, Provisioner, RecordStore, SessionStore};
 
 const USER_FOR_SESSION: &'static str = include_str!("data-store/user-for-session.sql");
 
@@ -43,6 +43,7 @@ pub struct StaticContext {
   session: Arc<SessionStore>,
   records: Arc<RecordStore>,
   urls: Arc<AuthorizationUrls>,
+  provisioner: Arc<Provisioner>,
   auth: Option<Authorization>,
 }
 
@@ -53,6 +54,10 @@ impl StaticContext {
 
   pub fn auth(&self) -> &Option<Authorization> {
     &self.auth
+  }
+
+  pub fn provisioner(&self) -> &Provisioner {
+    &self.provisioner
   }
 
   pub fn records(&self) -> &RecordStore {
@@ -79,19 +84,17 @@ impl StaticContext {
   }
 }
 
+#[derive(Default)]
 pub struct StaticContextBuilder {
   session: Option<Arc<SessionStore>>,
   records: Option<Arc<RecordStore>>,
+  provisioner: Option<Arc<Provisioner>>,
   urls: Option<Arc<AuthorizationUrls>>,
 }
 
 impl StaticContextBuilder {
   pub fn new() -> Self {
-    StaticContextBuilder {
-      session: None,
-      records: None,
-      urls: None,
-    }
+    Self::default()
   }
 
   pub fn urls(self, urls: Arc<AuthorizationUrls>) -> Self {
@@ -104,6 +107,13 @@ impl StaticContextBuilder {
   pub fn records(self, records: Arc<RecordStore>) -> Self {
     StaticContextBuilder {
       records: Some(records),
+      ..self
+    }
+  }
+
+  pub fn provisioner(self, provisioner: Arc<Provisioner>) -> Self {
+    StaticContextBuilder {
+      provisioner: Some(provisioner),
       ..self
     }
   }
@@ -149,6 +159,10 @@ impl StaticContextBuilder {
       .records
       .ok_or(Error::new(ErrorKind::Other, "no record store provided"))?;
 
+    let provisioner = self
+      .provisioner
+      .ok_or(Error::new(ErrorKind::Other, "no session store provided"))?;
+
     let session = self
       .session
       .ok_or(Error::new(ErrorKind::Other, "no session store provided"))?;
@@ -159,6 +173,7 @@ impl StaticContextBuilder {
     ))?;
 
     Ok(StaticContext {
+      provisioner,
       session,
       records,
       urls,
