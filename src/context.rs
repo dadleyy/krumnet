@@ -161,7 +161,7 @@ impl StaticContextBuilder {
 
     let provisioner = self
       .provisioner
-      .ok_or(Error::new(ErrorKind::Other, "no session store provided"))?;
+      .ok_or(Error::new(ErrorKind::Other, "no provisioner provided"))?;
 
     let session = self
       .session
@@ -186,7 +186,7 @@ impl StaticContextBuilder {
 mod test_helpers {
   use super::{StaticContext, StaticContextBuilder};
   use crate::configuration::test_helpers::load_config;
-  use crate::{Authorization, AuthorizationUrls, RecordStore, SessionStore};
+  use crate::{Authorization, AuthorizationUrls, Provisioner, RecordStore, SessionStore};
   use async_std::task::block_on;
   use std::sync::Arc;
 
@@ -196,9 +196,11 @@ mod test_helpers {
       let session = Arc::new(SessionStore::open(&config).await.unwrap());
       let records = Arc::new(RecordStore::open(&config).await.unwrap());
       let urls = Arc::new(AuthorizationUrls::open(&config).await.unwrap());
+      let provisioner = Arc::new(Provisioner::open(&config).await.unwrap());
       StaticContextBuilder::new()
         .records(records)
         .session(session)
+        .provisioner(provisioner)
         .urls(urls)
         .build(auth)
         .unwrap()

@@ -275,7 +275,7 @@ pub async fn identify(context: &StaticContext) -> Result<Res<SessionData>> {
 #[cfg(test)]
 mod test {
   use crate::configuration::test_helpers::load_config;
-  use crate::persistence::RecordStore;
+  use crate::RecordStore;
 
   use async_std::task::block_on;
 
