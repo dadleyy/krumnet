@@ -27,7 +27,9 @@ jobs:
       - name: Install postgres client
         run: apt-get install -y postgresql-client libpq-dev
       - name: Setup DB
-        run: psql -f db/structure.sql --host postgres --port 5432 postgres
+        run: psql -f db/structure.sql --user postgres --host postgres --port 5432 postgres
+        env:
+          PGPASSWORD: postgres
       - name: Rustup install beta
         run: rustup toolchain install beta
       - name: Rustup use beta
