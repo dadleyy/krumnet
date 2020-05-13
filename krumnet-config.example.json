@@ -5,15 +5,15 @@
     "cors_origin": "http://0.0.0.0:8081"
   },
   "record_store": {
-    "postgres_uri": "host=postgres user=postgres password=postgres",
+    "postgres_uri": "host=postgres user=postgres password=postgres port=8099 dbname=krumnet_test",
     "redis_uri": "0.0.0.0:6379",
-    "provisioning_queue": "krumnet:provisioning_queue",
-    "provisioning_map": "krumnet:provisioning_map"
+    "provisioning_queue": "krumnet_test:provisioning_queue",
+    "provisioning_map": "krumnet_test:provisioning_map"
   },
   "session_store": {
     "redis_uri": "0.0.0.0:6379",
     "secret": "krumnet",
-    "session_prefix": "session"
+    "session_prefix": "session_test"
   },
   "google": {
     "client_id": "...",

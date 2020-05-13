@@ -185,9 +185,21 @@ mod test_helpers {
 #[cfg(test)]
 mod test {
   use super::test_helpers::with_auth;
+  use crate::Authorization;
 
   #[test]
-  fn with_auth_ok() {
+  fn with_auth_some() {
+    let ctx = with_auth(Some(Authorization(
+      "s-123".to_string(),
+      "tester".to_string(),
+      "test@tester.com".to_string(),
+      "token-123".to_string(),
+    )));
+    assert!(ctx.auth().is_some());
+  }
+
+  #[test]
+  fn with_auth_none() {
     let ctx = with_auth(None);
     assert!(ctx.auth().is_none());
   }
