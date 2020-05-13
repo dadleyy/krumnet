@@ -22,14 +22,8 @@ jobs:
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
       - uses: actions/checkout@v1
-      - name: Search psql
-        run: apt search psql
-      - name: Search postgresql
-        run: apt search postgresql
-      - name: Install postgres packages
-        run: apt-get -y install libpq-dev postgresql
       - name: Setup DB
-        run: psql -f db/structure.sql --host postgres --port 5432 postgres
+        run: sudo -u postgres psql -f db/structure.sql --host postgres --port 5432 postgres
       - name: Rustup install beta
         run: rustup toolchain install beta
       - name: Rustup use beta
