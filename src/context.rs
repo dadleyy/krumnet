@@ -118,8 +118,17 @@ impl StaticContextBuilder {
   pub async fn for_request(self, head: &Head) -> Result<StaticContext> {
     if let (Some(session), Some(records)) = (self.session.as_ref(), self.records.as_ref()) {
       let auth = match head.find_header(header::AUTHORIZATION) {
-        Some(key) => load_authorization(key, session.clone(), records.clone()).await,
-        None => Ok(None),
+        Some(key) => {
+          info!("found authorization header- {}", key);
+          load_authorization(key, session.clone(), records.clone()).await
+        }
+        None => {
+          info!(
+            "authorization header ('{}') not found",
+            header::AUTHORIZATION
+          );
+          Ok(None)
+        }
       }
       .unwrap_or_else(|e| {
         info!("unable to load authorization - {}", e);

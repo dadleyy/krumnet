@@ -245,7 +245,10 @@ pub fn parse_user_session_query(row: Row) -> Option<SessionUserData> {
 pub async fn identify(context: &StaticContext) -> Result<Res<SessionData>> {
   let Authorization(uid, _, _, _) = match context.auth() {
     Some(auth) => auth,
-    None => return Ok(Res::not_found(context.cors().ok())),
+    None => {
+      info!("unauthenticated attempt to identify user");
+      return Ok(Res::not_found(context.cors().ok()));
+    }
   };
 
   let tenant = context

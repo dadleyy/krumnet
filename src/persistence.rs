@@ -77,7 +77,7 @@ impl RecordStore {
     kramer::execute(&mut (*stream), cmd).await
   }
 
-  pub async fn dequeue(&self) -> Result<Option<QueuedProvisioningAttempt>> {
+  async fn dequeue_next_id(&self) -> Result<Option<String>> {
     let (queue_key, _) = &self._storage_keys;
     let cmd = Command::List::<_, &str>(ListCommand::Pop(Side::Left, queue_key, Some((None, 10))));
     let res = self.command(&cmd).await?;
@@ -85,14 +85,43 @@ impl RecordStore {
     match res {
       Response::Array(contents) => {
         if let Some(ResponseValue::String(serialized)) = contents.iter().nth(1) {
-          let attempt = deserialize::<QueuedProvisioningAttempt>(serialized.as_str())?;
-          info!("popped off queue with contents {:?}", contents);
-          return Ok(Some(attempt));
+          info!("found serialized queue entry - '{}'", serialized);
+          return Ok(Some(serialized.clone()));
         }
 
+        info!(
+          "strange value popped from provisioning queue - {:?}",
+          contents
+        );
         Ok(None)
       }
       _ => Ok(None),
+    }
+  }
+
+  async fn deserialize_entry(&self, id: &String) -> Result<Option<QueuedProvisioningAttempt>> {
+    let (_, map_key) = &self._storage_keys;
+    let lookup = Command::Hashes::<_, &str>(HashCommand::Get(map_key, Some(Arity::One(id))));
+    let res = self.command(&lookup).await?;
+
+    if let Response::Item(ResponseValue::String(serialized)) = res {
+      info!("pulled provisioning map entry - {:?}", serialized);
+      let attempt = deserialize::<QueuedProvisioningAttempt>(serialized.as_str())?;
+      return Ok(Some(attempt));
+    }
+
+    info!(
+      "strange response from provisioning map for '{}' - {:?}",
+      id, res
+    );
+    Ok(None)
+  }
+
+  pub async fn dequeue(&self) -> Result<Option<QueuedProvisioningAttempt>> {
+    let next = self.dequeue_next_id().await?;
+    match next {
+      Some(id) => self.deserialize_entry(&id).await,
+      None => Ok(None),
     }
   }
 
