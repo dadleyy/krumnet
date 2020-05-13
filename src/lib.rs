@@ -20,16 +20,16 @@ pub mod http;
 use crate::http::{Response as Res, StatusCode, Uri};
 
 pub mod configuration;
-use configuration::Configuration;
+pub use configuration::Configuration;
 
 mod persistence;
-use persistence::RecordStore;
+pub use persistence::RecordStore;
 
 mod authorization;
-use authorization::{cors as cors_headers, Authorization, AuthorizationUrls};
+use authorization::{Authorization, AuthorizationUrls};
 
 mod context;
-use context::Context;
+use context::{StaticContext, StaticContextBuilder};
 
 mod errors;
 mod interchange;
@@ -61,55 +61,45 @@ where
 }
 
 // Called for each new connection to the server, this is where requests are routed.
-async fn handle<T, S, R, A>(
-  mut connection: T,
-  session: S,
-  records: R,
-  authorization: A,
-) -> Result<(), Error>
+async fn handle<T>(mut connection: T, context: StaticContextBuilder) -> Result<(), Error>
 where
   T: AsyncRead + AsyncWrite + Unpin,
-  S: context::SessionInterface,
-  R: context::RecordInterface,
-  A: std::ops::Deref<Target = AuthorizationUrls>,
 {
   let head = recognize(&mut connection).await?;
   match head.path() {
     Some(path) => {
       let uri = path.parse::<Uri>().map_err(errors::humanize_error)?;
+      let ctx = context.for_request(&head).await?;
 
       info!("request - {}", uri.path());
 
       match (head.method(), uri.path()) {
         (Some(RequestMethod::OPTIONS), _) => {
           info!("received preflight CORS request, sending headers");
-          let response = cors_headers(&authorization)
+          let response = ctx
+            .cors()
             .map(|headers| Res::Empty::<()>(StatusCode::OK, Some(headers)));
           write(&mut connection, response).await
         }
         (Some(RequestMethod::POST), "/provision-lobby") => {
-          let ctx = context::for_request(session, records, authorization, head).await?;
           let response = lobbies::provision(&ctx).await;
           write(&mut connection, response).await
         }
         (Some(RequestMethod::GET), "/auth/callback") => {
-          let ctx = context::for_request(session, records, authorization, head).await?;
-          let res = auth::callback(&ctx, &uri).await;
-          write(&mut connection, res).await
+          let response = auth::callback(&ctx, &uri).await;
+          write(&mut connection, response).await
         }
         (Some(RequestMethod::GET), "/auth/destroy") => {
-          let ctx = context::for_request(session, records, authorization, head).await?;
-          let res = auth::destroy(&ctx, &uri).await;
-          write(&mut connection, res).await
+          let response = auth::destroy(&ctx, &uri).await;
+          write(&mut connection, response).await
         }
         (Some(RequestMethod::GET), "/auth/identify") => {
-          let ctx = context::for_request(session, records, authorization, head).await?;
-          let res = auth::identify(&ctx).await;
-          write(&mut connection, res).await
+          let response = auth::identify(&ctx).await;
+          write(&mut connection, response).await
         }
         (Some(RequestMethod::GET), "/auth/redirect") => {
-          let res = Ok(redirect::<()>(format!("{}", authorization.init)));
-          write(&mut connection, res).await
+          let response = Ok(redirect::<()>(format!("{}", ctx.urls().init)));
+          write(&mut connection, response).await
         }
         _ => write(&mut connection, Ok(not_found::<()>())).await,
       }
@@ -135,11 +125,13 @@ pub async fn run(configuration: Configuration) -> Result<(), Error> {
   while let Some(stream) = incoming.next().await {
     match stream {
       Ok(connection) => {
-        let records = records.clone();
-        let session = session.clone();
-        let auth = authorization_urls.clone();
+        let ctx = StaticContextBuilder::new()
+          .session(session.clone())
+          .records(records.clone())
+          .urls(authorization_urls.clone());
+
         task::spawn(async {
-          if let Err(e) = handle(connection, session, records, auth).await {
+          if let Err(e) = handle(connection, ctx).await {
             info!("[warning] unable to handle connection: {:?}", e);
           }
         });

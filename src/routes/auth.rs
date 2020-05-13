@@ -4,14 +4,12 @@ use r2d2_postgres::postgres::row::Row;
 use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind, Result};
 
-use crate::authorization::{
-  cors as cors_headers, cors_builder as cors, Authorization, AuthorizationUrls,
-};
+use crate::authorization::{cors_builder as cors, Authorization, AuthorizationUrls};
 use crate::configuration::GoogleCredentials;
-use crate::context::Context;
+use crate::context::StaticContext;
 use crate::errors;
-use crate::http::{query as qs, Method, Request, Response as Res, Uri, Url};
-use crate::interchange::SessionPayload;
+use crate::http::{header, query as qs, Method, Request, Response as Res, Uri, Url};
+use crate::interchange::http::{SessionData, SessionUserData};
 use crate::persistence::RecordStore;
 
 const USER_FOR_SESSION: &'static str = include_str!("data-store/load-user-for-session.sql");
@@ -36,7 +34,7 @@ struct UserInfoPayload {
 
 // Destroy is a route handler that will attempt to delete the session associated with the token
 // provided in the authorization header _or_ as a `token` query param.
-pub async fn destroy(context: &Context<'_>, uri: &Uri) -> Result<Res<()>> {
+pub async fn destroy(context: &StaticContext, uri: &Uri) -> Result<Res<()>> {
   let token = context
     .auth()
     .as_ref()
@@ -67,7 +65,7 @@ async fn fetch_info(
   let request = Request::builder()
     .method(Method::GET)
     .uri(&urls.identify)
-    .header("Authorization", bearer.as_str())
+    .header(header::AUTHORIZATION, bearer.as_str())
     .body(())
     .map_err(errors::humanize_error)?;
 
@@ -199,7 +197,7 @@ fn build_krumi_callback(urls: &AuthorizationUrls, token: &String) -> Result<Stri
 // This is the route handler that is used as the redirect uri of the google client. It is
 // responsible for receiving the code from the successful oauth prompt and redirecting the user to
 // the krumpled ui.
-pub async fn callback(context: &Context<'_>, uri: &Uri) -> Result<Res<()>> {
+pub async fn callback(context: &StaticContext, uri: &Uri) -> Result<Res<()>> {
   let query = uri.query().unwrap_or_default().as_bytes();
 
   let code = match qs::parse(query).find(|(key, _)| key == "code") {
@@ -237,17 +235,17 @@ pub async fn callback(context: &Context<'_>, uri: &Uri) -> Result<Res<()>> {
   build_krumi_callback(context.urls(), &token).map(|redir| Res::redirect(&redir))
 }
 
-pub fn parse_user_session_query(row: Row) -> Option<SessionPayload> {
+pub fn parse_user_session_query(row: Row) -> Option<SessionUserData> {
   let id = row.try_get(0).ok()?;
   let name = row.try_get(1).ok()?;
   let email = row.try_get(2).ok()?;
-  Some(SessionPayload { id, email, name })
+  Some(SessionUserData { id, email, name })
 }
 
-pub async fn identify(context: &Context<'_>) -> Result<Res<SessionPayload>> {
+pub async fn identify(context: &StaticContext) -> Result<Res<SessionData>> {
   let Authorization(uid, _, _, _) = match context.auth() {
     Some(auth) => auth,
-    None => return Ok(Res::not_found(cors_headers(context.urls()).ok())),
+    None => return Ok(Res::not_found(context.cors().ok())),
   };
 
   let tenant = context
@@ -255,7 +253,8 @@ pub async fn identify(context: &Context<'_>) -> Result<Res<SessionPayload>> {
     .query(USER_FOR_SESSION, &[&uid])
     .ok()
     .and_then(|mut rows| rows.pop())
-    .and_then(parse_user_session_query);
+    .and_then(parse_user_session_query)
+    .map(|user| SessionData { user });
 
   info!(
     "loading session payload for user '{}' (payload {:?})",

@@ -77,7 +77,8 @@ pub fn cors(urls: &AuthorizationUrls) -> Result<HeaderMap> {
   );
   headers.insert(
     header::ACCESS_CONTROL_ALLOW_HEADERS,
-    HeaderValue::from_str("Authorization").map_err(|e| Error::new(ErrorKind::Other, e))?,
+    HeaderValue::from_str(header::AUTHORIZATION.as_str())
+      .map_err(|e| Error::new(ErrorKind::Other, e))?,
   );
 
   Ok(headers)

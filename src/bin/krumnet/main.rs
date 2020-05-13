@@ -4,13 +4,13 @@ extern crate gumdrop;
 use gumdrop::{parse_args_default_or_exit, Options as Gumdrop};
 
 use async_std::task;
-use krumnet::configuration::Configuration;
 use krumnet::run;
+use krumnet::Configuration;
 use log::info;
 
 #[derive(Debug, Gumdrop)]
 struct Options {
-  #[options(help = "configuration toml file")]
+  #[options(help = "configuration json file")]
   config: Configuration,
 
   #[options(help = "display the help text")]

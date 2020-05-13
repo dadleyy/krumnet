@@ -1,7 +1,10 @@
 use elaine::Head;
 use log::info;
-use std::io::Result;
+use std::io::{Error, ErrorKind, Result};
+use std::sync::Arc;
 
+use crate::errors::humanize_error;
+use crate::http::{header, HeaderMap, HeaderValue};
 use crate::{Authorization, AuthorizationUrls, RecordStore, SessionStore};
 
 const USER_FOR_SESSION: &'static str = include_str!("data-store/user-for-session.sql");
@@ -11,31 +14,6 @@ impl<T> SessionInterface for T where T: std::ops::Deref<Target = SessionStore> {
 
 pub trait RecordInterface: std::ops::Deref<Target = RecordStore> {}
 impl<T> RecordInterface for T where T: std::ops::Deref<Target = RecordStore> {}
-
-pub struct Context<'a> {
-  session: &'a SessionStore,
-  records: &'a RecordStore,
-  urls: &'a AuthorizationUrls,
-  auth: Option<Authorization>,
-}
-
-impl<'a> Context<'a> {
-  pub fn session(&'a self) -> &'a SessionStore {
-    self.session
-  }
-
-  pub fn records(&'a self) -> &'a RecordStore {
-    self.records
-  }
-
-  pub fn auth(&'a self) -> &'a Option<Authorization> {
-    &self.auth
-  }
-
-  pub fn urls(&self) -> &'a AuthorizationUrls {
-    self.urls
-  }
-}
 
 // Attempts to exchange an authorization token for a user id from the session store, subsequently
 // loading the actual user information from the record store.
@@ -61,31 +39,156 @@ pub async fn load_authorization<S: SessionInterface, R: RecordInterface>(
   Ok(tenant)
 }
 
-pub async fn for_request<'a, S, R, A>(
-  session: S,
-  records: R,
-  urls: A,
-  head: Head,
-) -> Result<Context<'a>>
-where
-  S: std::ops::Deref<Target = SessionStore>,
-  R: std::ops::Deref<Target = RecordStore>,
-  A: std::ops::Deref<Target = AuthorizationUrls>,
-{
-  let auth = match head.find_header("Authorization") {
-    Some(key) => load_authorization(key, session.deref(), records.deref()).await,
-    None => Ok(None),
-  }
-  .unwrap_or_else(|e| {
-    info!("unable to load authorization - {}", e);
-    None
-  });
+pub struct StaticContext {
+  session: Arc<SessionStore>,
+  records: Arc<RecordStore>,
+  urls: Arc<AuthorizationUrls>,
+  auth: Option<Authorization>,
+}
 
-  let _ctx = Context {
-    session: session.deref(),
-    records: records.deref(),
-    urls: urls.deref(),
-    auth,
-  };
-  Err(std::io::Error::new(std::io::ErrorKind::Other, ""))
+impl StaticContext {
+  pub fn session(&self) -> &SessionStore {
+    &self.session
+  }
+
+  pub fn auth(&self) -> &Option<Authorization> {
+    &self.auth
+  }
+
+  pub fn records(&self) -> &RecordStore {
+    &self.records
+  }
+
+  pub fn urls(&self) -> &AuthorizationUrls {
+    &self.urls
+  }
+
+  pub fn cors(&self) -> Result<HeaderMap> {
+    let mut headers = HeaderMap::with_capacity(5);
+
+    headers.insert(
+      header::ACCESS_CONTROL_ALLOW_ORIGIN,
+      HeaderValue::from_str(&self.urls.cors_origin).map_err(humanize_error)?,
+    );
+    headers.insert(
+      header::ACCESS_CONTROL_ALLOW_HEADERS,
+      HeaderValue::from_str(header::AUTHORIZATION.as_str()).map_err(humanize_error)?,
+    );
+
+    Ok(headers)
+  }
+}
+
+pub struct StaticContextBuilder {
+  session: Option<Arc<SessionStore>>,
+  records: Option<Arc<RecordStore>>,
+  urls: Option<Arc<AuthorizationUrls>>,
+}
+
+impl StaticContextBuilder {
+  pub fn new() -> Self {
+    StaticContextBuilder {
+      session: None,
+      records: None,
+      urls: None,
+    }
+  }
+
+  pub fn urls(self, urls: Arc<AuthorizationUrls>) -> Self {
+    StaticContextBuilder {
+      urls: Some(urls),
+      ..self
+    }
+  }
+
+  pub fn records(self, records: Arc<RecordStore>) -> Self {
+    StaticContextBuilder {
+      records: Some(records),
+      ..self
+    }
+  }
+
+  pub fn session(self, session: Arc<SessionStore>) -> Self {
+    StaticContextBuilder {
+      session: Some(session),
+      ..self
+    }
+  }
+
+  pub async fn for_request(self, head: &Head) -> Result<StaticContext> {
+    if let (Some(session), Some(records)) = (self.session.as_ref(), self.records.as_ref()) {
+      let auth = match head.find_header(header::AUTHORIZATION) {
+        Some(key) => load_authorization(key, session.clone(), records.clone()).await,
+        None => Ok(None),
+      }
+      .unwrap_or_else(|e| {
+        info!("unable to load authorization - {}", e);
+        None
+      });
+
+      return self.build(auth);
+    }
+
+    Err(Error::new(
+      ErrorKind::Other,
+      "attempted to build static context w/o session or records",
+    ))
+  }
+
+  pub fn build(self, auth: Option<Authorization>) -> Result<StaticContext> {
+    let records = self
+      .records
+      .ok_or(Error::new(ErrorKind::Other, "no record store provided"))?;
+
+    let session = self
+      .session
+      .ok_or(Error::new(ErrorKind::Other, "no session store provided"))?;
+
+    let urls = self.urls.ok_or(Error::new(
+      ErrorKind::Other,
+      "no authorization urls provided",
+    ))?;
+
+    Ok(StaticContext {
+      session,
+      records,
+      urls,
+      auth,
+    })
+  }
+}
+
+#[cfg(test)]
+mod test_helpers {
+  use super::{StaticContext, StaticContextBuilder};
+  use crate::configuration::test_helpers::load_config;
+  use crate::{Authorization, AuthorizationUrls, RecordStore, SessionStore};
+  use async_std::task::block_on;
+  use std::sync::Arc;
+
+  pub fn with_auth(auth: Option<Authorization>) -> StaticContext {
+    block_on(async {
+      let config = load_config().unwrap();
+      let session = Arc::new(SessionStore::open(&config).await.unwrap());
+      let records = Arc::new(RecordStore::open(&config).await.unwrap());
+      let urls = Arc::new(AuthorizationUrls::open(&config).await.unwrap());
+      StaticContextBuilder::new()
+        .records(records)
+        .session(session)
+        .urls(urls)
+        .build(auth)
+        .unwrap()
+    })
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::test_helpers::with_auth;
+
+  #[test]
+  fn with_auth_ok() {
+    let ctx = with_auth(None);
+    assert!(ctx.auth().is_none());
+  }
 }

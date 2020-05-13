@@ -1,24 +1,40 @@
-use log::info;
 use std::io::Result;
 
-use crate::http::{Response, StatusCode};
-use crate::{authorization, errors, Context};
+use log::info;
 
-pub async fn provision(context: &Context<'_>) -> Result<Response<()>> {
+use crate::http::Response;
+use crate::interchange::http::ProvisioningAttemptHandle;
+use crate::interchange::provisioning::{ProvisioningAttempt, ProvisioningAttemptAuthority};
+use crate::{authorization, errors, StaticContext};
+
+pub async fn provision(context: &StaticContext) -> Result<Response<ProvisioningAttemptHandle>> {
   let builder = authorization::cors_builder(context.urls())?;
 
   let uid = match context.auth() {
     Some(authorization::Authorization(id, _name, _email, _token)) => id,
     None => {
-      return builder
-        .status(StatusCode::NOT_FOUND)
-        .body(())
-        .map(|r| Response::json(r))
-        .map_err(errors::humanize_error)
+      return Ok(Response::not_found(
+        authorization::cors(context.urls()).ok(),
+      ))
     }
   };
 
-  info!("attempting to provision lobby for user '{}'", uid);
+  let authority = ProvisioningAttemptAuthority::User { id: uid.clone() };
+  let attempt = ProvisioningAttempt::Lobby { authority };
+  let result = context.records().queue(attempt).await?;
+  info!("command result: {:?}", result);
 
-  Ok(Response::not_found(None))
+  builder
+    .body(ProvisioningAttemptHandle { id: result })
+    .map(|r| Response::json(r))
+    .map_err(errors::humanize_error)
+}
+
+#[cfg(test)]
+mod test {
+
+  #[test]
+  fn test_unauthorized() {
+    assert!(true);
+  }
 }

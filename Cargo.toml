@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Danny Hadley <dadleyy@gmail.com>"]
 edition = "2018"
 publish = false
+default-run = "krumnet"
 
 [lib]
 name = "krumnet"
@@ -11,7 +12,11 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "krumnet"
-path = "src/bin/main.rs"
+path = "src/bin/krumnet/main.rs"
+
+[[bin]]
+name = "kruwk"
+path = "src/bin/kruwk/main.rs"
 
 [dependencies]
 async-std = "^1.0"

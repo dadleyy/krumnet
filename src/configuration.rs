@@ -117,6 +117,8 @@ pub struct KrumiConfiguration {
 pub struct RecordStoreConfiguration {
   pub postgres_uri: String,
   pub redis_uri: String,
+  pub provisioning_queue: String,
+  pub provisioning_map: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
