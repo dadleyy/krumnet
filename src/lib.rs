@@ -21,8 +21,10 @@ pub mod constants;
 pub mod context;
 pub mod errors;
 pub mod http;
+pub mod interchange;
 pub mod oauth;
 pub mod records;
+pub mod routes;
 pub mod session;
 
 pub use crate::authority::Authority;
@@ -62,17 +64,23 @@ where
   T: AsyncRead + AsyncWrite + Unpin,
 {
   let head = recognize(&mut connection).await?;
-  let ctx = builder.for_request(&head)?;
+  debug!("recognized request - '{:?}'", head.path());
+  let ctx = builder.for_request(&head).await?;
   let (method, path) = extract_parts(&head)?;
   let uri = path.parse::<Uri>().map_err(errors::humanize_error)?;
 
-  info!("request {} (context: {:?}", uri, &ctx);
+  info!("request {} (context: {:?})", uri, &ctx);
 
   let response = match (method, uri.path()) {
+    (RequestMethod::OPTIONS, _) => {
+      debug!("cors preflight request");
+      Ok(Response::default().cors(ctx.cors()))
+    }
     (RequestMethod::GET, "/auth/redirect") => {
       debug!("initiating oauth flow");
       oauth::redirect(&ctx)
     }
+    (RequestMethod::GET, "/auth/identify") => routes::identify(&ctx).await,
     (RequestMethod::GET, "/auth/callback") => {
       debug!("oauth callback");
       oauth::callback(&ctx, &uri).await

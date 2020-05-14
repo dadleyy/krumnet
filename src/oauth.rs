@@ -12,7 +12,6 @@ use crate::constants::{
 use crate::http::{header, query as qs, Method, Request, Response, Uri, Url};
 use crate::{errors, Context};
 
-const USER_FOR_SESSION: &'static str = include_str!("data-store/load-user-for-session.sql");
 const FIND_USER: &'static str = include_str!("data-store/find-user-by-google-id.sql");
 const CREATE_USER: &'static str = include_str!("data-store/create-user.sql");
 

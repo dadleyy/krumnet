@@ -1,8 +1,12 @@
 use async_std::sync::Arc;
 use elaine::Head;
+use log::info;
 use std::io::Result;
 
+use crate::http::AUTHORIZATION;
 use crate::{errors, Authority, Configuration, RecordStore, SessionStore};
+
+const USER_FOR_SESSION: &'static str = include_str!("data-store/user-for-session.sql");
 
 pub struct Context {
   _auth: Authority,
@@ -14,6 +18,10 @@ pub struct Context {
 impl Context {
   pub fn builder() -> ContextBuilder {
     ContextBuilder::default()
+  }
+
+  pub fn authority(&self) -> &Authority {
+    &self._auth
   }
 
   pub fn session(&self) -> &SessionStore {
@@ -46,6 +54,44 @@ pub struct ContextBuilder {
   _config: Option<Configuration>,
 }
 
+// Attempts to exchange an authorization token for a user id from the session store, subsequently
+// loading the actual user information from the record store.
+pub async fn load_authorization(
+  token: String,
+  session: &SessionStore,
+  records: &RecordStore,
+) -> Result<Authority> {
+  let uid = session.get(&token).await?;
+  let tenant = records
+    .query(USER_FOR_SESSION, &[&uid])?
+    .iter()
+    .nth(0)
+    .and_then(|row| {
+      let id = row.try_get::<_, String>(0).ok()?;
+      let name = row.try_get::<_, String>(1).ok()?;
+      let email = row.try_get::<_, String>(2).ok()?;
+      info!("found user '{:?}' {:?} {:?}", id, name, email);
+      Some(Authority::User(id))
+    });
+
+  info!("loaded tenant from auth header: {:?}", tenant);
+  Ok(tenant.unwrap_or(Authority::None))
+}
+
+async fn load_auth(
+  head: &Head,
+  session: &SessionStore,
+  records: &RecordStore,
+) -> Result<Authority> {
+  if let Some(value) = head.find_header(AUTHORIZATION) {
+    info!("found authorization header - {}", value);
+    return load_authorization(value, session, records).await;
+  }
+
+  info!("no authorization header present");
+  Ok(Authority::None)
+}
+
 impl ContextBuilder {
   pub fn configuration(self, config: &Configuration) -> Self {
     ContextBuilder {
@@ -68,7 +114,7 @@ impl ContextBuilder {
     }
   }
 
-  pub fn for_request(self, head: &Head) -> Result<Context> {
+  pub async fn for_request(self, head: &Head) -> Result<Context> {
     let _config = self
       ._config
       .ok_or(errors::e("missing configuraiton from context"))?;
@@ -82,7 +128,7 @@ impl ContextBuilder {
       .ok_or(errors::e("missing session configuration for context"))?;
 
     Ok(Context {
-      _auth: Authority::default(),
+      _auth: load_auth(head, &_session, &_records).await?,
       _config,
       _session,
       _records,

@@ -4,8 +4,10 @@ use std::time::Duration;
 use log::info;
 use r2d2::Pool as ConnectionPool;
 use r2d2_postgres::postgres::types::ToSql;
-use r2d2_postgres::postgres::{NoTls, Row, ToStatement};
+use r2d2_postgres::postgres::{NoTls, ToStatement};
 use r2d2_postgres::PostgresConnectionManager as Postgres;
+
+pub use r2d2_postgres::postgres::Row;
 
 use crate::{errors, Configuration};
 
