@@ -91,7 +91,7 @@ where
     }
     _ => {
       debug!("not-found - '{}'", path);
-      Ok(Response::not_found())
+      Ok(Response::not_found().cors(ctx.cors()))
     }
   }
   .unwrap_or_else(|e| {
@@ -100,8 +100,9 @@ where
   });
 
   connection
-    .write_all(format!("{}", response).as_bytes())
+    .write(format!("{}", response).as_bytes())
     .await
+    .map(|_| ())
 }
 
 pub async fn serve(configuration: Configuration) -> Result<()> {
@@ -117,18 +118,20 @@ pub async fn serve(configuration: Configuration) -> Result<()> {
   info!("accepting incoming tcp streams");
   while let Some(stream) = incoming.next().await {
     match stream {
-      Ok(connection) => {
+      Ok(mut connection) => {
         let builder = Context::builder()
           .configuration(&configuration)
           .session(session.clone())
           .records(records.clone());
 
-        task::spawn(async {
-          let result = route(connection, builder).await;
+        task::spawn(async move {
+          let result = route(&mut connection, builder).await;
 
           if let Err(e) = result {
             info!("[warning] unable to handle connection: {:?}", e);
           }
+
+          connection.shutdown(std::net::Shutdown::Both)
         });
       }
       Err(e) => {

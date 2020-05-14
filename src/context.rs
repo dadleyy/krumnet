@@ -1,6 +1,6 @@
 use async_std::sync::Arc;
 use elaine::Head;
-use log::info;
+use log::{info, warn};
 use std::io::Result;
 
 use crate::http::AUTHORIZATION;
@@ -85,7 +85,12 @@ async fn load_auth(
 ) -> Result<Authority> {
   if let Some(value) = head.find_header(AUTHORIZATION) {
     info!("found authorization header - {}", value);
-    return load_authorization(value, session, records).await;
+    return load_authorization(value, session, records)
+      .await
+      .or_else(|e| {
+        warn!("unable to load authorization - {}", e);
+        Ok(Authority::None)
+      });
   }
 
   info!("no authorization header present");

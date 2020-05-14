@@ -78,7 +78,10 @@ impl Response {
 
     debug!("adding cors headers");
     header_map.push((ACCESS_CONTROL_ALLOW_ORIGIN, origin));
-    header_map.push((ACCESS_CONTROL_ALLOW_HEADERS, AUTHORIZATION.to_string()));
+    header_map.push((
+      ACCESS_CONTROL_ALLOW_HEADERS,
+      format!("{}, {}", AUTHORIZATION, CONTENT_TYPE),
+    ));
     header_map.push((ACCESS_CONTROL_REQUEST_HEADERS, CONTENT_TYPE.to_string()));
     header_map.push((
       ACCESS_CONTROL_ALLOW_METHODS,
@@ -97,10 +100,11 @@ impl std::fmt::Display for Response {
     let headers = header_map
       .iter()
       .chain(lenh.iter())
+      .chain(Some((header::CONNECTION, "close".to_string())).iter())
       .map(|(v, k)| format!("{}: {}\r\n", v, k))
       .collect::<String>();
 
-    write!(formatter, "HTTP/1.0 {}\r\n{}\r\n{}", code, headers, body)
+    write!(formatter, "HTTP/1.1 {}\r\n{}\r\n{}", code, headers, body)
   }
 }
 
@@ -111,6 +115,9 @@ mod test {
   #[test]
   fn not_found() {
     let res = Response::not_found();
-    assert_eq!(format!("{}", res), "HTTP/1.0 404 Not Found\r\n\r\n");
+    assert_eq!(
+      format!("{}", res),
+      "HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n"
+    );
   }
 }

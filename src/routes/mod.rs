@@ -17,7 +17,7 @@ pub fn parse_user_session_query(row: Row) -> Option<SessionUserData> {
 pub async fn identify(context: &Context) -> Result<Response> {
   let uid = match context.authority() {
     Authority::User(id) => id,
-    Authority::None => return Ok(Response::default().cors(context.cors())),
+    Authority::None => return Ok(Response::not_found().cors(context.cors())),
   };
 
   info!("loading sesison for user {}", uid);
