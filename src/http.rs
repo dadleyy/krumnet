@@ -103,3 +103,14 @@ impl std::fmt::Display for Response {
     write!(formatter, "HTTP/1.0 {}\r\n{}\r\n{}", code, headers, body)
   }
 }
+
+#[cfg(test)]
+mod test {
+  use super::Response;
+
+  #[test]
+  fn not_found() {
+    let res = Response::not_found();
+    assert_eq!(format!("{}", res), "HTTP/1.0 404 Not Found\r\n\r\n");
+  }
+}

@@ -114,7 +114,7 @@ impl ContextBuilder {
     }
   }
 
-  pub async fn for_request(self, head: &Head) -> Result<Context> {
+  pub fn with_authority(self, auth: Authority) -> Result<Context> {
     let _config = self
       ._config
       .ok_or(errors::e("missing configuraiton from context"))?;
@@ -128,10 +128,47 @@ impl ContextBuilder {
       .ok_or(errors::e("missing session configuration for context"))?;
 
     Ok(Context {
-      _auth: load_auth(head, &_session, &_records).await?,
+      _auth: auth,
       _config,
       _session,
       _records,
+    })
+  }
+
+  pub async fn for_request(self, head: &Head) -> Result<Context> {
+    let records = self
+      ._records
+      .as_ref()
+      .ok_or(errors::e("missing session configuration for context"))?;
+
+    let session = self
+      ._session
+      .as_ref()
+      .ok_or(errors::e("missing session configuration for context"))?;
+
+    let auth = load_auth(head, session, records).await?;
+    self.with_authority(auth)
+  }
+}
+
+#[cfg(test)]
+mod test_helpers {
+  use super::Context;
+  use crate::configuration::test_helpers::load_config;
+  use crate::{Authority, RecordStore, SessionStore};
+  use async_std::task::block_on;
+  use std::sync::Arc;
+
+  pub fn with_auth(auth: Authority) -> Context {
+    block_on(async {
+      let config = load_config().unwrap();
+      let session = Arc::new(SessionStore::open(&config).await.unwrap());
+      let records = Arc::new(RecordStore::open(&config).await.unwrap());
+      Context::builder()
+        .records(records)
+        .session(session)
+        .with_authority(auth)
+        .unwrap()
     })
   }
 }
