@@ -4,8 +4,7 @@ extern crate gumdrop;
 use gumdrop::{parse_args_default_or_exit, Options as Gumdrop};
 
 use async_std::task;
-use krumnet::run;
-use krumnet::Configuration;
+use krumnet::{serve, Configuration};
 use log::info;
 
 #[derive(Debug, Gumdrop)]
@@ -28,7 +27,9 @@ fn main() {
 
   info!("[debug] starting server '{:?}'", opts.config.addr);
 
-  if let Err(e) = task::block_on(run(opts.config)) {
+  let out = task::block_on(serve(opts.config));
+
+  if let Err(e) = out {
     info!("[error] exiting with error: {:?}", e);
   }
 }

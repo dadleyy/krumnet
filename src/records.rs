@@ -1,8 +1,7 @@
-use std::io::{Error, ErrorKind, Result};
+use std::io::Result;
 use std::time::Duration;
 
 use log::info;
-
 use r2d2::Pool as ConnectionPool;
 use r2d2_postgres::postgres::types::ToSql;
 use r2d2_postgres::postgres::{NoTls, Row, ToStatement};
@@ -14,30 +13,21 @@ pub struct RecordStore {
   _pool: ConnectionPool<Postgres<NoTls>>,
 }
 
-impl std::fmt::Debug for RecordStore {
-  fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-    write!(formatter, "RecordStore")
-  }
-}
-
 impl RecordStore {
-  pub async fn open<C>(config: C) -> Result<Self>
-  where
-    C: std::ops::Deref<Target = Configuration>,
-  {
-    let parsed_config = config
+  pub async fn open(configuration: &Configuration) -> Result<Self> {
+    let parsed_config = configuration
       .record_store
       .postgres_uri
       .as_str()
       .parse()
-      .map_err(|e| Error::new(ErrorKind::Other, e))?;
+      .map_err(errors::humanize_error)?;
 
     let manager = Postgres::new(parsed_config, NoTls);
 
     let pool = ConnectionPool::builder()
       .connection_timeout(Duration::new(1, 0))
       .build(manager)
-      .map_err(|e| Error::new(ErrorKind::Other, e))?;
+      .map_err(errors::humanize_error)?;
 
     info!("connection pool successfully created, ready to execute queries");
 

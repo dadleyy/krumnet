@@ -11,13 +11,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::configuration::Configuration;
 
-pub struct SessionStore {
-  _stream: RwLock<TcpStream>,
-  _secret: String,
-  _encoding_key: EncodingKey,
-  _session_prefix: String,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 struct SessionClaims {
   uid: String,
@@ -32,7 +25,14 @@ fn destroy_command<S: std::fmt::Display>(prefix: S, key: &String) -> Command<Str
   Command::Del::<_, String>(Arity::One(format!("{}:{}", prefix, key)))
 }
 
-impl SessionStore {
+pub struct Session {
+  _stream: RwLock<TcpStream>,
+  _secret: String,
+  _encoding_key: EncodingKey,
+  _session_prefix: String,
+}
+
+impl Session {
   pub async fn open<C>(configuration: C) -> Result<Self, Error>
   where
     C: std::ops::Deref<Target = Configuration>,
@@ -45,7 +45,7 @@ impl SessionStore {
     );
     let key = EncodingKey::from_secret(configuration.session_store.secret.as_bytes());
 
-    Ok(SessionStore {
+    Ok(Session {
       _stream: RwLock::new(stream),
       _session_prefix: configuration.session_store.session_prefix.clone(),
       _secret: configuration.session_store.secret.clone(),

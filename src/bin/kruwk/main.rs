@@ -3,7 +3,7 @@ use gumdrop::{parse_args_default_or_exit, Options as Gumdrop};
 use log::info;
 use std::io::Result;
 
-use krumnet::{Configuration, Provisioner};
+use krumnet::Configuration;
 
 #[derive(Debug, Gumdrop)]
 struct Options {
@@ -25,16 +25,6 @@ fn main() -> Result<()> {
 
   block_on(async {
     info!("starting worker process");
-    let records = Provisioner::open(&opts.config).await?;
-    info!("record store opened successfully, starting worker");
-
-    loop {
-      match records.dequeue().await {
-        Ok(Some(attempt)) => {
-          info!("handling provisioning attempt {}", attempt.id);
-        }
-        _ => info!("unable to pull attempt off queue, moving on"),
-      }
-    }
+    Ok(())
   })
 }

@@ -1,235 +1,91 @@
+use async_std::sync::Arc;
 use elaine::Head;
-use log::info;
-use std::io::{Error, ErrorKind, Result};
-use std::sync::Arc;
+use std::io::Result;
 
-use crate::errors::humanize_error;
-use crate::http::{header, HeaderMap, HeaderValue};
-use crate::{Authorization, AuthorizationUrls, Provisioner, RecordStore, SessionStore};
+use crate::{errors, Authority, Configuration, RecordStore, SessionStore};
 
-const USER_FOR_SESSION: &'static str = include_str!("data-store/user-for-session.sql");
-
-pub trait SessionInterface: std::ops::Deref<Target = SessionStore> {}
-impl<T> SessionInterface for T where T: std::ops::Deref<Target = SessionStore> {}
-
-pub trait RecordInterface: std::ops::Deref<Target = RecordStore> {}
-impl<T> RecordInterface for T where T: std::ops::Deref<Target = RecordStore> {}
-
-// Attempts to exchange an authorization token for a user id from the session store, subsequently
-// loading the actual user information from the record store.
-pub async fn load_authorization<S: SessionInterface, R: RecordInterface>(
-  token: String,
-  session: S,
-  records: R,
-) -> Result<Option<Authorization>> {
-  let uid = session.get(&token).await?;
-  let tenant = records
-    .query(USER_FOR_SESSION, &[&uid])?
-    .iter()
-    .nth(0)
-    .and_then(|row| {
-      let id = row.try_get::<_, String>(0).ok()?;
-      let name = row.try_get::<_, String>(1).ok()?;
-      let email = row.try_get::<_, String>(2).ok()?;
-      info!("found user '{:?}' {:?} {:?}", id, name, email);
-      Some(Authorization(id, name, email, token))
-    });
-
-  info!("loaded tenant from auth header: {:?}", tenant);
-  Ok(tenant)
+pub struct Context {
+  _auth: Authority,
+  _session: Arc<SessionStore>,
+  _records: Arc<RecordStore>,
+  _config: Configuration,
 }
 
-pub struct StaticContext {
-  session: Arc<SessionStore>,
-  records: Arc<RecordStore>,
-  urls: Arc<AuthorizationUrls>,
-  provisioner: Arc<Provisioner>,
-  auth: Option<Authorization>,
-}
+impl Context {
+  pub fn builder() -> ContextBuilder {
+    ContextBuilder::default()
+  }
 
-impl StaticContext {
   pub fn session(&self) -> &SessionStore {
-    &self.session
-  }
-
-  pub fn auth(&self) -> &Option<Authorization> {
-    &self.auth
-  }
-
-  pub fn provisioner(&self) -> &Provisioner {
-    &self.provisioner
+    &self._session
   }
 
   pub fn records(&self) -> &RecordStore {
-    &self.records
+    &self._records
   }
 
-  pub fn urls(&self) -> &AuthorizationUrls {
-    &self.urls
+  pub fn config(&self) -> &Configuration {
+    &self._config
   }
 
-  pub fn cors(&self) -> Result<HeaderMap> {
-    let mut headers = HeaderMap::with_capacity(5);
+  pub fn cors(&self) -> String {
+    self._config.krumi.cors_origin.clone()
+  }
+}
 
-    headers.insert(
-      header::ACCESS_CONTROL_ALLOW_ORIGIN,
-      HeaderValue::from_str(&self.urls.cors_origin).map_err(humanize_error)?,
-    );
-
-    let allowed_headers = format!("{}, {}", header::AUTHORIZATION, header::CONTENT_TYPE);
-
-    headers.insert(
-      header::ACCESS_CONTROL_ALLOW_HEADERS,
-      HeaderValue::from_str(&allowed_headers).map_err(humanize_error)?,
-    );
-
-    Ok(headers)
+impl std::fmt::Debug for Context {
+  fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+    write!(formatter, "Context<Autority:{:?}>", &self._auth)
   }
 }
 
 #[derive(Default)]
-pub struct StaticContextBuilder {
-  session: Option<Arc<SessionStore>>,
-  records: Option<Arc<RecordStore>>,
-  provisioner: Option<Arc<Provisioner>>,
-  urls: Option<Arc<AuthorizationUrls>>,
+pub struct ContextBuilder {
+  _session: Option<Arc<SessionStore>>,
+  _records: Option<Arc<RecordStore>>,
+  _config: Option<Configuration>,
 }
 
-impl StaticContextBuilder {
-  pub fn new() -> Self {
-    Self::default()
-  }
-
-  pub fn urls(self, urls: Arc<AuthorizationUrls>) -> Self {
-    StaticContextBuilder {
-      urls: Some(urls),
+impl ContextBuilder {
+  pub fn configuration(self, config: &Configuration) -> Self {
+    ContextBuilder {
+      _config: Some(config.clone()),
       ..self
     }
   }
 
   pub fn records(self, records: Arc<RecordStore>) -> Self {
-    StaticContextBuilder {
-      records: Some(records),
-      ..self
-    }
-  }
-
-  pub fn provisioner(self, provisioner: Arc<Provisioner>) -> Self {
-    StaticContextBuilder {
-      provisioner: Some(provisioner),
+    ContextBuilder {
+      _records: Some(records),
       ..self
     }
   }
 
   pub fn session(self, session: Arc<SessionStore>) -> Self {
-    StaticContextBuilder {
-      session: Some(session),
+    ContextBuilder {
+      _session: Some(session),
       ..self
     }
   }
 
-  pub async fn for_request(self, head: &Head) -> Result<StaticContext> {
-    if let (Some(session), Some(records)) = (self.session.as_ref(), self.records.as_ref()) {
-      let auth = match head.find_header(header::AUTHORIZATION) {
-        Some(key) => {
-          info!("found authorization header- {}", key);
-          load_authorization(key, session.clone(), records.clone()).await
-        }
-        None => {
-          info!(
-            "authorization header ('{}') not found",
-            header::AUTHORIZATION
-          );
-          Ok(None)
-        }
-      }
-      .unwrap_or_else(|e| {
-        info!("unable to load authorization - {}", e);
-        None
-      });
+  pub fn for_request(self, head: &Head) -> Result<Context> {
+    let _config = self
+      ._config
+      .ok_or(errors::e("missing configuraiton from context"))?;
 
-      return self.build(auth);
-    }
+    let _records = self
+      ._records
+      .ok_or(errors::e("missing records configuration for context"))?;
 
-    Err(Error::new(
-      ErrorKind::Other,
-      "attempted to build static context w/o session or records",
-    ))
-  }
+    let _session = self
+      ._session
+      .ok_or(errors::e("missing session configuration for context"))?;
 
-  pub fn build(self, auth: Option<Authorization>) -> Result<StaticContext> {
-    let records = self
-      .records
-      .ok_or(Error::new(ErrorKind::Other, "no record store provided"))?;
-
-    let provisioner = self
-      .provisioner
-      .ok_or(Error::new(ErrorKind::Other, "no provisioner provided"))?;
-
-    let session = self
-      .session
-      .ok_or(Error::new(ErrorKind::Other, "no session store provided"))?;
-
-    let urls = self.urls.ok_or(Error::new(
-      ErrorKind::Other,
-      "no authorization urls provided",
-    ))?;
-
-    Ok(StaticContext {
-      provisioner,
-      session,
-      records,
-      urls,
-      auth,
+    Ok(Context {
+      _auth: Authority::default(),
+      _config,
+      _session,
+      _records,
     })
-  }
-}
-
-#[cfg(test)]
-mod test_helpers {
-  use super::{StaticContext, StaticContextBuilder};
-  use crate::configuration::test_helpers::load_config;
-  use crate::{Authorization, AuthorizationUrls, Provisioner, RecordStore, SessionStore};
-  use async_std::task::block_on;
-  use std::sync::Arc;
-
-  pub fn with_auth(auth: Option<Authorization>) -> StaticContext {
-    block_on(async {
-      let config = load_config().unwrap();
-      let session = Arc::new(SessionStore::open(&config).await.unwrap());
-      let records = Arc::new(RecordStore::open(&config).await.unwrap());
-      let urls = Arc::new(AuthorizationUrls::open(&config).await.unwrap());
-      let provisioner = Arc::new(Provisioner::open(&config).await.unwrap());
-      StaticContextBuilder::new()
-        .records(records)
-        .session(session)
-        .provisioner(provisioner)
-        .urls(urls)
-        .build(auth)
-        .unwrap()
-    })
-  }
-}
-
-#[cfg(test)]
-mod test {
-  use super::test_helpers::with_auth;
-  use crate::Authorization;
-
-  #[test]
-  fn with_auth_some() {
-    let ctx = with_auth(Some(Authorization(
-      "s-123".to_string(),
-      "tester".to_string(),
-      "test@tester.com".to_string(),
-      "token-123".to_string(),
-    )));
-    assert!(ctx.auth().is_some());
-  }
-
-  #[test]
-  fn with_auth_none() {
-    let ctx = with_auth(None);
-    assert!(ctx.auth().is_none());
   }
 }
