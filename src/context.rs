@@ -165,10 +165,22 @@ mod test_helpers {
       let session = Arc::new(SessionStore::open(&config).await.unwrap());
       let records = Arc::new(RecordStore::open(&config).await.unwrap());
       Context::builder()
+        .configuration(&config)
         .records(records)
         .session(session)
         .with_authority(auth)
         .unwrap()
     })
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::test_helpers::with_auth;
+  use crate::Authority;
+
+  #[test]
+  fn test_none_authority() {
+    assert_eq!(with_auth(Authority::None).authority(), &Authority::None);
   }
 }
