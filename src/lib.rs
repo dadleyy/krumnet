@@ -10,14 +10,14 @@ use async_std::task;
 use elaine::{recognize, RequestMethod};
 use log::info;
 use serde::Serialize;
-use std::io::Error;
+use std::io::{Error, Result};
 use std::marker::Unpin;
 use std::sync::Arc;
 
 pub mod constants;
 
 pub mod http;
-use crate::http::{Response as Res, StatusCode, Uri};
+use crate::http::{Response, StatusCode, Uri};
 
 pub mod configuration;
 pub use configuration::{Configuration, GoogleCredentials};
@@ -38,10 +38,10 @@ mod records;
 pub use records::{Provisioner, RecordStore};
 
 mod routes;
-use routes::{auth, lobbies, not_found, redirect, server_error};
+use routes::auth;
 
 // Given a response, writes it to our connection.
-async fn write<C, D>(mut writer: C, data: Result<Res<D>, Error>) -> Result<(), Error>
+async fn write<C, D>(mut writer: C, data: Result<Response<D>>) -> Result<()>
 where
   C: AsyncWrite + Unpin,
   D: Serialize,
@@ -50,9 +50,10 @@ where
     info!("[warning] attempted to write a failed handler: {:?}", e);
   }
 
-  info!("writing response");
-
-  let res = data.unwrap_or_else(server_error);
+  let res = data.unwrap_or_else(|e| {
+    info!("reponse handler error - {}", e);
+    Response::server_error()
+  });
 
   writer
     .write(format!("{}", res).as_bytes())
@@ -61,7 +62,7 @@ where
 }
 
 // Called for each new connection to the server, this is where requests are routed.
-async fn handle<T>(mut connection: T, context: StaticContextBuilder) -> Result<(), Error>
+async fn handle<T>(mut connection: T, context: StaticContextBuilder) -> Result<()>
 where
   T: AsyncRead + AsyncWrite + Unpin,
 {
@@ -78,13 +79,21 @@ where
           info!("received preflight CORS request, sending headers");
           let response = ctx
             .cors()
-            .map(|headers| Res::Empty::<()>(StatusCode::OK, Some(headers)));
+            .map(|headers| Response::Empty::<()>(StatusCode::OK, Some(headers)));
           write(&mut connection, response).await
         }
-        (Some(RequestMethod::POST), "/provision-lobby") => {
-          let response = lobbies::provision(&ctx).await;
+        /*
+        (Some(RequestMethod::GET), "/provision") => {
+          // let response = provisions::find(&ctx).await;
+          let response = Response::not_found(None);
           write(&mut connection, response).await
         }
+        (Some(RequestMethod::POST), "/provision") => {
+          // let response = provisions::create(&ctx, &mut connection).await;
+          let response = Response::not_found(None);
+          write(&mut connection, response).await
+        }
+        */
         (Some(RequestMethod::GET), "/auth/callback") => {
           let response = auth::callback(&ctx, &uri).await;
           write(&mut connection, response).await
@@ -98,17 +107,21 @@ where
           write(&mut connection, response).await
         }
         (Some(RequestMethod::GET), "/auth/redirect") => {
-          let response = Ok(redirect::<()>(format!("{}", ctx.urls().init)));
+          let destination = format!("{}", ctx.urls().init);
+          let response = Ok(Response::redirect(&destination) as Response<()>);
           write(&mut connection, response).await
         }
-        _ => write(&mut connection, Ok(not_found::<()>())).await,
+        _ => {
+          let response = Ok(Response::not_found(None) as Response<()>);
+          write(&mut connection, response).await
+        }
       }
     }
     None => Ok(()),
   }
 }
 
-pub async fn run(configuration: Configuration) -> Result<(), Error> {
+pub async fn run(configuration: Configuration) -> Result<()> {
   let listener = TcpListener::bind(&configuration.addr).await?;
   let mut incoming = listener.incoming();
 

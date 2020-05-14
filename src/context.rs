@@ -75,9 +75,12 @@ impl StaticContext {
       header::ACCESS_CONTROL_ALLOW_ORIGIN,
       HeaderValue::from_str(&self.urls.cors_origin).map_err(humanize_error)?,
     );
+
+    let allowed_headers = format!("{}, {}", header::AUTHORIZATION, header::CONTENT_TYPE);
+
     headers.insert(
       header::ACCESS_CONTROL_ALLOW_HEADERS,
-      HeaderValue::from_str(header::AUTHORIZATION.as_str()).map_err(humanize_error)?,
+      HeaderValue::from_str(&allowed_headers).map_err(humanize_error)?,
     );
 
     Ok(headers)

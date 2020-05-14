@@ -66,7 +66,7 @@ impl Provisioner {
     }
   }
 
-  async fn deserialize_entry(&self, id: &String) -> Result<Option<QueuedProvisioningAttempt>> {
+  async fn find(&self, id: &String) -> Result<Option<QueuedProvisioningAttempt>> {
     let (_, map_key) = &self._keys;
     let lookup = Command::Hashes::<_, &str>(HashCommand::Get(map_key, Some(Arity::One(id))));
     let res = self.command(&lookup).await?;
@@ -87,7 +87,7 @@ impl Provisioner {
   pub async fn dequeue(&self) -> Result<Option<QueuedProvisioningAttempt>> {
     let next = self.dequeue_next_id().await?;
     match next {
-      Some(id) => self.deserialize_entry(&id).await,
+      Some(id) => self.find(&id).await,
       None => Ok(None),
     }
   }

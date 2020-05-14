@@ -4,7 +4,7 @@ use r2d2_postgres::postgres::row::Row;
 use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind, Result};
 
-use crate::authorization::{cors_builder as cors, Authorization, AuthorizationUrls};
+use crate::authorization::{Authorization, AuthorizationUrls};
 use crate::configuration::GoogleCredentials;
 use crate::context::StaticContext;
 use crate::errors;
