@@ -21,6 +21,10 @@ impl JobStore {
     kramer::execute(&mut (*stream), cmd).await
   }
 
+  pub async fn lookup(&self, id: &String) -> Result<Option<QueuedJob>> {
+    self.deserialize_entry(id).await
+  }
+
   async fn dequeue_next_id(&self) -> Result<Option<String>> {
     let (queue_key, _) = &self._keys;
     let cmd = Command::List::<_, &str>(ListCommand::Pop(Side::Left, queue_key, Some((None, 10))));
@@ -85,7 +89,7 @@ impl JobStore {
     let queue_cmd = Command::List(ListCommand::Push(
       (Side::Right, Insertion::Always),
       queue_key,
-      Arity::One(&queued.id),
+      Arity::One(&uid),
     ));
 
     let map_cmd = Command::Hashes(HashCommand::Set(

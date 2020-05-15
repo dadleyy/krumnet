@@ -35,7 +35,7 @@ where
     context.pending()
   );
 
-  context
+  let job_id = context
     .jobs()
     .queue(&interchange::jobs::Job::CreateLoby {
       creator: uid.clone(),
@@ -45,5 +45,7 @@ where
 
   let payload = deserialize::<Payload>(&contents)?;
   debug!("buffer after read {:?}", payload);
-  Ok(Response::default().cors(context.cors()))
+
+  Response::ok_json(interchange::http::JobHandle { id: job_id.clone() })
+    .map(|r| r.cors(context.cors()))
 }

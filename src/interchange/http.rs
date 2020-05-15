@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
-pub struct ProvisioningAttemptHandle {
+pub struct JobHandle {
   pub id: String,
 }
 

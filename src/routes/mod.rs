@@ -1,6 +1,7 @@
 use log::info;
 use std::io::Result;
 
+pub mod jobs;
 pub mod lobbies;
 
 use crate::http::{query as qs, Uri};
@@ -15,6 +16,13 @@ pub fn parse_user_session_query(row: Row) -> Option<SessionUserData> {
   let name = row.try_get(1).ok()?;
   let email = row.try_get(2).ok()?;
   Some(SessionUserData { id, email, name })
+}
+
+pub fn ensure_authorized(context: &Context) -> Option<Result<Response>> {
+  match context.authority() {
+    Authority::None => Some(Ok(Response::not_found().cors(context.cors()))),
+    _ => None,
+  }
 }
 
 pub async fn destroy(context: &Context, uri: &Uri) -> Result<Response> {

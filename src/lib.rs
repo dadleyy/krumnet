@@ -82,6 +82,8 @@ where
       debug!("initiating oauth flow");
       oauth::redirect(&ctx)
     }
+    (RequestMethod::GET, "/jobs") => routes::ensure_authorized(&ctx)
+      .unwrap_or_else(|| task::block_on(async { routes::jobs::find(&ctx, &uri).await })),
     (RequestMethod::POST, "/lobbies") => routes::lobbies::create(&ctx, &mut connection).await,
     (RequestMethod::GET, "/auth/identify") => routes::identify(&ctx).await,
     (RequestMethod::GET, "/auth/destroy") => routes::destroy(&ctx, &uri).await,
