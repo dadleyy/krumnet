@@ -65,6 +65,17 @@ impl JobStore {
     Ok(None)
   }
 
+  pub async fn update(&self, id: &String, job: &QueuedJob) -> Result<String> {
+    let (_, map_key) = &self._keys;
+    let serialized = serialize(&job)?;
+    let map_cmd = Command::Hashes(HashCommand::Set(
+      map_key,
+      Arity::One((&id, serialized)),
+      Insertion::Always,
+    ));
+    self.command(&map_cmd).await.map(|_| id.clone())
+  }
+
   pub async fn dequeue(&self) -> Result<Option<QueuedJob>> {
     let next = self.dequeue_next_id().await?;
     match next {

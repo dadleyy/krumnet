@@ -46,6 +46,9 @@ where
   let payload = deserialize::<Payload>(&contents)?;
   debug!("buffer after read {:?}", payload);
 
-  Response::ok_json(interchange::http::JobHandle { id: job_id.clone() })
-    .map(|r| r.cors(context.cors()))
+  Response::ok_json(interchange::http::JobHandle {
+    id: job_id.clone(),
+    result: None,
+  })
+  .map(|r| r.cors(context.cors()))
 }

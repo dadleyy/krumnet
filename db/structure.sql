@@ -25,6 +25,7 @@ drop table if exists lobbies cascade;
 
 create table lobbies (
   id varchar unique default uuid_generate_v4() PRIMARY KEY,
+  job_id varchar not null,
   name varchar not null,
   settings bit(10) not null, /*
   * | bit  | significance   |

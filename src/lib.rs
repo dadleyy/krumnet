@@ -23,6 +23,7 @@ pub mod errors;
 pub mod http;
 pub mod interchange;
 pub mod jobs;
+pub mod names;
 pub mod oauth;
 pub mod records;
 pub mod routes;

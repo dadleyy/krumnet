@@ -47,7 +47,7 @@ pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
           with_access(context.authority(), job)
             .map(|job| {
               debug!("user has access to job");
-              Response::ok_json(JobHandle { id: job.id }).map(|r| r.cors(context.cors()))
+              Response::ok_json(JobHandle::from(job)).map(|r| r.cors(context.cors()))
             })
             .unwrap_or(Ok(Response::not_found().cors(context.cors())))
         }

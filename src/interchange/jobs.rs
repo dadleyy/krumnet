@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 pub enum Job {
   CreateLoby {
     creator: String,
-    result: Option<String>,
+    result: Option<Result<String, String>>,
   },
 }
 
