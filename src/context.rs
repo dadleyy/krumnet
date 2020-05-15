@@ -190,7 +190,7 @@ impl ContextBuilder {
 mod test_helpers {
   use super::Context;
   use crate::configuration::test_helpers::load_config;
-  use crate::{Authority, RecordStore, SessionStore};
+  use crate::{Authority, JobStore, RecordStore, SessionStore};
   use async_std::task::block_on;
   use std::sync::Arc;
 
@@ -199,10 +199,12 @@ mod test_helpers {
       let config = load_config().unwrap();
       let session = Arc::new(SessionStore::open(&config).await.unwrap());
       let records = Arc::new(RecordStore::open(&config).await.unwrap());
+      let jobs = Arc::new(JobStore::open(&config).await.unwrap());
       Context::builder()
         .configuration(&config)
         .records(records)
         .session(session)
+        .jobs(jobs)
         .with_authority(auth)
         .unwrap()
     })
