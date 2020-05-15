@@ -1,0 +1,121 @@
+use async_std::net::TcpStream;
+use async_std::sync::RwLock;
+use kramer::{Arity, Command, HashCommand, Insertion, ListCommand, Response, ResponseValue, Side};
+use log::{debug, info};
+use serde_json::{from_str as deserialize, to_string as serialize};
+use std::fmt::Display;
+use std::io::Result;
+use uuid::Uuid;
+
+use crate::interchange::jobs::{Job, QueuedJob};
+use crate::Configuration;
+
+pub struct JobStore {
+  _stream: RwLock<TcpStream>,
+  _keys: (String, String),
+}
+
+impl JobStore {
+  async fn command<K: Display, V: Display>(&self, cmd: &Command<K, V>) -> Result<Response> {
+    let mut stream = self._stream.write().await;
+    kramer::execute(&mut (*stream), cmd).await
+  }
+
+  async fn dequeue_next_id(&self) -> Result<Option<String>> {
+    let (queue_key, _) = &self._keys;
+    let cmd = Command::List::<_, &str>(ListCommand::Pop(Side::Left, queue_key, Some((None, 10))));
+    let res = self.command(&cmd).await?;
+
+    match res {
+      Response::Array(contents) => {
+        if let Some(ResponseValue::String(serialized)) = contents.iter().nth(1) {
+          info!("found serialized queue entry - '{}'", serialized);
+          return Ok(Some(serialized.clone()));
+        }
+
+        info!(
+          "strange value popped from provisioning queue - {:?}",
+          contents
+        );
+        Ok(None)
+      }
+      _ => Ok(None),
+    }
+  }
+
+  async fn deserialize_entry(&self, id: &String) -> Result<Option<QueuedJob>> {
+    let (_, map_key) = &self._keys;
+    let lookup = Command::Hashes::<_, &str>(HashCommand::Get(map_key, Some(Arity::One(id))));
+    let res = self.command(&lookup).await?;
+
+    if let Response::Item(ResponseValue::String(serialized)) = res {
+      info!("pulled provisioning map entry - {:?}", serialized);
+      let attempt = deserialize::<QueuedJob>(serialized.as_str())?;
+      return Ok(Some(attempt));
+    }
+
+    info!(
+      "strange response from provisioning map for '{}' - {:?}",
+      id, res
+    );
+    Ok(None)
+  }
+
+  pub async fn dequeue(&self) -> Result<Option<QueuedJob>> {
+    let next = self.dequeue_next_id().await?;
+    match next {
+      Some(id) => self.deserialize_entry(&id).await,
+      None => Ok(None),
+    }
+  }
+
+  pub async fn queue(&self, job: &Job) -> Result<String> {
+    let uid = Uuid::new_v4().to_string();
+
+    let queued = QueuedJob {
+      id: uid.clone(),
+      job: job.clone(),
+    };
+    let serialized = serialize(&queued)?;
+
+    debug!("serialized job '{}' - '{}'", uid, serialized);
+
+    let (queue_key, map_key) = &self._keys;
+
+    let queue_cmd = Command::List(ListCommand::Push(
+      (Side::Right, Insertion::Always),
+      queue_key,
+      Arity::One(&queued.id),
+    ));
+
+    let map_cmd = Command::Hashes(HashCommand::Set(
+      map_key,
+      Arity::One((&uid, serialized)),
+      Insertion::Always,
+    ));
+
+    self.command(&map_cmd).await?;
+    self.command(&queue_cmd).await?;
+
+    debug!("job '{}' inserted", uid);
+    Ok(uid)
+  }
+
+  pub async fn open<C>(configuration: C) -> Result<Self>
+  where
+    C: std::ops::Deref<Target = Configuration>,
+  {
+    let stream = TcpStream::connect(configuration.job_store.redis_uri.as_str()).await?;
+    let (queue, map) = (
+      &configuration.job_store.queue_key,
+      &configuration.job_store.map_key,
+    );
+
+    info!("job store ready, queue[{}] map[{}]", queue, map);
+
+    Ok(JobStore {
+      _stream: RwLock::new(stream),
+      _keys: (queue.clone(), map.clone()),
+    })
+  }
+}

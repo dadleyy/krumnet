@@ -1,17 +1,40 @@
 extern crate http;
 
-pub use http::header::AUTHORIZATION;
+use async_std::io::{timeout, Read};
+use async_std::prelude::*;
 use http::header::{
   HeaderName, ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS,
   ACCESS_CONTROL_ALLOW_ORIGIN, ACCESS_CONTROL_REQUEST_HEADERS, CONTENT_LENGTH, CONTENT_TYPE,
   LOCATION,
 };
+use log::{debug, info};
+use std::io::{Error, ErrorKind, Result};
+use std::marker::Unpin;
+use std::time::Duration;
+
+use crate::constants::MAX_FILE_SIZE;
+pub use http::header::AUTHORIZATION;
 pub use http::{header, Method, Request, StatusCode, Uri};
 pub use url::form_urlencoded as query;
 pub use url::Url;
 
-use log::{debug, info};
-use std::io::Result;
+pub async fn read_size_async<R>(reader: &mut R, size: usize) -> Result<Vec<u8>>
+where
+  R: Read + Unpin,
+{
+  if size > MAX_FILE_SIZE {
+    let m = format!("requested read too large - {}", size);
+    let e = Error::new(ErrorKind::Other, m);
+    return Err(e);
+  }
+  timeout(Duration::from_millis(300), async {
+    let mut contents: Vec<u8> = Vec::with_capacity(size);
+    info!("inside timeout, reading {} bytes", size);
+    reader.take(size as u64).read_to_end(&mut contents).await?;
+    Ok(contents)
+  })
+  .await
+}
 
 pub type HeaderMap = Vec<(HeaderName, String)>;
 
@@ -61,6 +84,14 @@ impl Response {
     info!("building json response");
     header_map.push((CONTENT_TYPE, "application/json".to_string()));
     Ok(Response(StatusCode::OK, header_map, Payload::String(vec)))
+  }
+
+  pub fn failed() -> Response {
+    Response(
+      StatusCode::BAD_REQUEST,
+      HeaderMap::default(),
+      Payload::Empty,
+    )
   }
 
   pub fn not_found() -> Response {

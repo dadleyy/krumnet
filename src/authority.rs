@@ -1,6 +1,6 @@
 #[derive(Debug, PartialEq)]
 pub enum Authority {
-  User(String),
+  User { id: String, token: String },
   None,
 }
 

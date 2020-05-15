@@ -6,9 +6,12 @@
   },
   "record_store": {
     "postgres_uri": "host=postgres user=postgres password=postgres port=8099 dbname=krumnet_test",
-    "redis_uri": "0.0.0.0:6379",
-    "provisioning_queue": "krumnet_test:provisioning_queue",
-    "provisioning_map": "krumnet_test:provisioning_map"
+    "redis_uri": "0.0.0.0:6379"
+  },
+  "job_store": {
+    "queue_key": "krumnet_test:provisioning_queue",
+    "map_key": "krumnet_test:provisioning_map",
+    "redis_uri": "0.0.0.0:6379"
   },
   "session_store": {
     "redis_uri": "0.0.0.0:6379",

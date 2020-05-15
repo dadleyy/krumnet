@@ -22,6 +22,9 @@ pub struct Configuration {
   pub record_store: RecordStoreConfiguration,
 
   #[serde(default)]
+  pub job_store: JobStoreConfiguration,
+
+  #[serde(default)]
   pub addr: String,
 }
 
@@ -41,6 +44,7 @@ impl Default for Configuration {
       addr: String::from("0.0.0.0:8080"),
       session_store: SessionStoreConfiguration::default(),
       record_store: RecordStoreConfiguration::default(),
+      job_store: JobStoreConfiguration::default(),
     }
   }
 }
@@ -114,11 +118,19 @@ pub struct KrumiConfiguration {
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
+pub struct JobStoreConfiguration {
+  #[serde(default)]
+  pub queue_key: String,
+  #[serde(default)]
+  pub map_key: String,
+  #[serde(default)]
+  pub redis_uri: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct RecordStoreConfiguration {
   pub postgres_uri: String,
   pub redis_uri: String,
-  pub provisioning_queue: String,
-  pub provisioning_map: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

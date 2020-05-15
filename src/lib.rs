@@ -12,7 +12,7 @@ use async_std::prelude::*;
 use async_std::sync::Arc;
 use async_std::task;
 use elaine::{recognize, Head, RequestMethod};
-use log::{debug, info};
+use log::{debug, info, warn};
 use serde::Serialize;
 
 pub mod authority;
@@ -22,6 +22,7 @@ pub mod context;
 pub mod errors;
 pub mod http;
 pub mod interchange;
+pub mod jobs;
 pub mod oauth;
 pub mod records;
 pub mod routes;
@@ -30,7 +31,8 @@ pub mod session;
 pub use crate::authority::Authority;
 pub use crate::configuration::{Configuration, GoogleCredentials};
 pub use crate::context::{Context, ContextBuilder};
-pub use crate::http::{Response, Uri};
+pub use crate::http::{read_size_async, Response, Uri};
+pub use crate::jobs::JobStore;
 pub use crate::records::RecordStore;
 pub use crate::session::Session as SessionStore;
 
@@ -80,7 +82,9 @@ where
       debug!("initiating oauth flow");
       oauth::redirect(&ctx)
     }
+    (RequestMethod::POST, "/lobbies") => routes::lobbies::create(&ctx, &mut connection).await,
     (RequestMethod::GET, "/auth/identify") => routes::identify(&ctx).await,
+    (RequestMethod::GET, "/auth/destroy") => routes::destroy(&ctx, &uri).await,
     (RequestMethod::GET, "/auth/callback") => {
       debug!("oauth callback");
       oauth::callback(&ctx, &uri).await
@@ -95,8 +99,8 @@ where
     }
   }
   .unwrap_or_else(|e| {
-    info!("request handler failed - {}", e);
-    Response::default()
+    warn!("request handler failed - {}", e);
+    Response::failed()
   });
 
   connection
@@ -112,6 +116,9 @@ pub async fn serve(configuration: Configuration) -> Result<()> {
   info!("opening session store");
   let session = Arc::new(SessionStore::open(&configuration).await?);
 
+  info!("opening job store");
+  let jobs = Arc::new(JobStore::open(&configuration).await?);
+
   info!("opening record store");
   let records = Arc::new(RecordStore::open(&configuration).await?);
 
@@ -121,6 +128,7 @@ pub async fn serve(configuration: Configuration) -> Result<()> {
       Ok(mut connection) => {
         let builder = Context::builder()
           .configuration(&configuration)
+          .jobs(jobs.clone())
           .session(session.clone())
           .records(records.clone());
 

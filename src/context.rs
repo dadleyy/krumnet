@@ -4,7 +4,7 @@ use log::{info, warn};
 use std::io::Result;
 
 use crate::http::AUTHORIZATION;
-use crate::{errors, Authority, Configuration, RecordStore, SessionStore};
+use crate::{errors, Authority, Configuration, JobStore, RecordStore, SessionStore};
 
 const USER_FOR_SESSION: &'static str = include_str!("data-store/user-for-session.sql");
 
@@ -12,12 +12,22 @@ pub struct Context {
   _auth: Authority,
   _session: Arc<SessionStore>,
   _records: Arc<RecordStore>,
+  _jobs: Arc<JobStore>,
   _config: Configuration,
+  _pending: usize,
 }
 
 impl Context {
   pub fn builder() -> ContextBuilder {
     ContextBuilder::default()
+  }
+
+  pub fn pending(&self) -> usize {
+    self._pending
+  }
+
+  pub fn jobs(&self) -> &JobStore {
+    &self._jobs
   }
 
   pub fn authority(&self) -> &Authority {
@@ -51,6 +61,7 @@ impl std::fmt::Debug for Context {
 pub struct ContextBuilder {
   _session: Option<Arc<SessionStore>>,
   _records: Option<Arc<RecordStore>>,
+  _jobs: Option<Arc<JobStore>>,
   _config: Option<Configuration>,
 }
 
@@ -71,7 +82,10 @@ pub async fn load_authorization(
       let name = row.try_get::<_, String>(1).ok()?;
       let email = row.try_get::<_, String>(2).ok()?;
       info!("found user '{:?}' {:?} {:?}", id, name, email);
-      Some(Authority::User(id))
+      Some(Authority::User {
+        id,
+        token: token.clone(),
+      })
     });
 
   info!("loaded tenant from auth header: {:?}", tenant);
@@ -112,6 +126,13 @@ impl ContextBuilder {
     }
   }
 
+  pub fn jobs(self, jobs: Arc<JobStore>) -> Self {
+    ContextBuilder {
+      _jobs: Some(jobs),
+      ..self
+    }
+  }
+
   pub fn session(self, session: Arc<SessionStore>) -> Self {
     ContextBuilder {
       _session: Some(session),
@@ -128,15 +149,21 @@ impl ContextBuilder {
       ._records
       .ok_or(errors::e("missing records configuration for context"))?;
 
+    let _jobs = self
+      ._jobs
+      .ok_or(errors::e("missing job configuration for context"))?;
+
     let _session = self
       ._session
       .ok_or(errors::e("missing session configuration for context"))?;
 
     Ok(Context {
       _auth: auth,
+      _jobs,
       _config,
       _session,
       _records,
+      _pending: 0,
     })
   }
 
@@ -152,7 +179,10 @@ impl ContextBuilder {
       .ok_or(errors::e("missing session configuration for context"))?;
 
     let auth = load_auth(head, session, records).await?;
-    self.with_authority(auth)
+    Ok(Context {
+      _pending: head.len().unwrap_or_default(),
+      ..self.with_authority(auth)?
+    })
   }
 }
 

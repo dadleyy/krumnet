@@ -1,9 +1,11 @@
 use async_std::task::block_on;
 use gumdrop::{parse_args_default_or_exit, Options as Gumdrop};
-use log::info;
+use log::{debug, info, warn};
 use std::io::Result;
 
-use krumnet::Configuration;
+use krumnet::{Configuration, JobStore};
+
+const MAX_WORKER_FAILS: u8 = 10;
 
 #[derive(Debug, Gumdrop)]
 struct Options {
@@ -24,7 +26,37 @@ fn main() -> Result<()> {
   }
 
   block_on(async {
-    info!("starting worker process");
+    debug!("starting worker process, opening job store");
+    let jobs = JobStore::open(&opts.config).await?;
+    let mut fails = 0;
+    debug!("job store successfully opened, starting dequeue");
+
+    loop {
+      let next = jobs.dequeue().await;
+
+      match next {
+        Ok(Some(job)) => {
+          info!("pulled next job off queue - {:?}", job.id);
+          fails = 0;
+        }
+        Ok(None) => {
+          debug!("nothing to work off, skppping");
+          fails = 0;
+        }
+        Err(e) => {
+          fails = fails + 1;
+
+          if fails > MAX_WORKER_FAILS {
+            warn!("final failure on job dequeue attempt - {}, exiting", e);
+            break;
+          }
+
+          warn!("failed job store dequeue attempt - {}", e);
+          continue;
+        }
+      }
+    }
+
     Ok(())
   })
 }
