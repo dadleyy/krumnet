@@ -9,6 +9,7 @@
     "redis_uri": "redis:6379"
   },
   "job_store": {
+    "dequeue_key": "krumnet_test:provisioning_cleanup_queue",
     "queue_key": "krumnet_test:provisioning_queue",
     "map_key": "krumnet_test:provisioning_map",
     "redis_uri": "redis:6379"

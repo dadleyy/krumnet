@@ -122,6 +122,8 @@ pub struct JobStoreConfiguration {
   #[serde(default)]
   pub queue_key: String,
   #[serde(default)]
+  pub dequeue_key: String,
+  #[serde(default)]
   pub map_key: String,
   #[serde(default)]
   pub redis_uri: String,

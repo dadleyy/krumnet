@@ -7,12 +7,12 @@ use std::fmt::Display;
 use std::io::Result;
 use uuid::Uuid;
 
-use crate::interchange::jobs::{Job, QueuedJob};
+use crate::interchange::jobs::{DequeuedJob, Job, QueuedJob};
 use crate::Configuration;
 
 pub struct JobStore {
   _stream: RwLock<TcpStream>,
-  _keys: (String, String),
+  _keys: (String, String, String),
 }
 
 impl JobStore {
@@ -26,7 +26,7 @@ impl JobStore {
   }
 
   async fn dequeue_next_id(&self) -> Result<Option<String>> {
-    let (queue_key, _) = &self._keys;
+    let (queue_key, _, _) = &self._keys;
     let cmd = Command::List::<_, &str>(ListCommand::Pop(Side::Left, queue_key, Some((None, 10))));
     let res = self.command(&cmd).await?;
 
@@ -48,7 +48,7 @@ impl JobStore {
   }
 
   async fn deserialize_entry(&self, id: &String) -> Result<Option<QueuedJob>> {
-    let (_, map_key) = &self._keys;
+    let (_, map_key, _) = &self._keys;
     let lookup = Command::Hashes::<_, &str>(HashCommand::Get(map_key, Some(Arity::One(id))));
     let res = self.command(&lookup).await?;
 
@@ -66,7 +66,7 @@ impl JobStore {
   }
 
   pub async fn update(&self, id: &String, job: &QueuedJob) -> Result<String> {
-    let (_, map_key) = &self._keys;
+    let (_, map_key, _) = &self._keys;
     let serialized = serialize(&job)?;
     let map_cmd = Command::Hashes(HashCommand::Set(
       map_key,
@@ -77,9 +77,22 @@ impl JobStore {
   }
 
   pub async fn dequeue(&self) -> Result<Option<QueuedJob>> {
+    let (_, _, dequeue_key) = &self._keys;
     let next = self.dequeue_next_id().await?;
     match next {
-      Some(id) => self.deserialize_entry(&id).await,
+      Some(id) => {
+        debug!("popped id '{}' off queue, writing dequeue job", id);
+        let serialized = serialize(&DequeuedJob::new(&id))?;
+
+        let cmd = Command::Hashes(HashCommand::Set(
+          dequeue_key,
+          Arity::One((&id, serialized)),
+          Insertion::Always,
+        ));
+
+        self.command(&cmd).await?;
+        self.deserialize_entry(&id).await
+      }
       None => Ok(None),
     }
   }
@@ -95,7 +108,7 @@ impl JobStore {
 
     debug!("serialized job '{}' - '{}'", uid, serialized);
 
-    let (queue_key, map_key) = &self._keys;
+    let (queue_key, map_key, _) = &self._keys;
 
     let queue_cmd = Command::List(ListCommand::Push(
       (Side::Right, Insertion::Always),
@@ -121,16 +134,17 @@ impl JobStore {
     C: std::ops::Deref<Target = Configuration>,
   {
     let stream = TcpStream::connect(configuration.job_store.redis_uri.as_str()).await?;
-    let (queue, map) = (
+    let (queue, map, dequeue) = (
       &configuration.job_store.queue_key,
       &configuration.job_store.map_key,
+      &configuration.job_store.dequeue_key,
     );
 
     info!("job store ready, queue[{}] map[{}]", queue, map);
 
     Ok(JobStore {
       _stream: RwLock::new(stream),
-      _keys: (queue.clone(), map.clone()),
+      _keys: (queue.clone(), map.clone(), dequeue.clone()),
     })
   }
 }

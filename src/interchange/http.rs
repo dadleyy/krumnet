@@ -2,13 +2,13 @@ use crate::interchange::jobs::{Job, QueuedJob};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "snake_case", tag = "t", content = "c")]
+#[serde(rename_all = "snake_case", tag = "kind", content = "data")]
 pub enum JobResult {
   NewLobby { id: String },
 }
 
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "snake_case", tag = "t", content = "c")]
+#[serde(rename_all = "snake_case", tag = "kind", content = "data")]
 pub enum WrappedJobResult {
   Success(JobResult),
   Failure(String),

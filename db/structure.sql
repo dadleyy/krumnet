@@ -41,8 +41,9 @@ create table lobby_memberships (
   id varchar unique default uuid_generate_v4() PRIMARY KEY,
   user_id varchar references users(id) not null,
   lobby_id varchar references lobbies(id) not null,
+  invited_by varchar references users(id),
   permissions bit(10) not null,
-  joined_at timestamp default now(),
+  joined_at timestamp,
   left_at timestamp
 );
 

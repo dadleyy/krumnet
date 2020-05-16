@@ -11,6 +11,7 @@
   "job_store": {
     "queue_key": "krumnet_test:provisioning_queue",
     "map_key": "krumnet_test:provisioning_map",
+    "dequeue_key": "krumnet_test:provisioning_cleanup_queue",
     "redis_uri": "0.0.0.0:6379"
   },
   "session_store": {
