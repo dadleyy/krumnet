@@ -1,5 +1,26 @@
 use crate::interchange::jobs::{Job, QueuedJob};
 use serde::Serialize;
+use std::time::SystemTime;
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct LobbyMember {
+  pub member_id: String,
+  pub user_id: String,
+  pub name: String,
+  pub email: String,
+  pub invited_by: Option<String>,
+  pub joined_at: Option<SystemTime>,
+  pub left_at: Option<SystemTime>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct LobbyDetails {
+  pub id: String,
+  pub name: String,
+  pub members: Vec<LobbyMember>,
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case", tag = "kind", content = "data")]

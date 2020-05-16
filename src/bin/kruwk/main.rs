@@ -11,7 +11,6 @@ use krumnet::{
 
 const MAX_WORKER_FAILS: u8 = 10;
 const FIND_USER: &'static str = include_str!("data-store/find-user-by-id.sql");
-const FIND_LOBBY_ID: &'static str = include_str!("data-store/find-lobby-id-by-job-id.sql");
 const CREATE_LOBBY: &'static str = include_str!("data-store/create-lobby.sql");
 
 #[derive(Debug, Gumdrop)]
@@ -59,16 +58,12 @@ fn make_lobby(
     .and_then(parse_user)
     .ok_or(String::from("unable to find user"))?;
 
-  records
-    .execute(CREATE_LOBBY, &[job_id, &name, &mask, &user.id])
+  let rows = records
+    .query(CREATE_LOBBY, &[job_id, &name, &mask, &user.id])
     .map_err(|e| {
       warn!("unable to create lobby - {}", e);
       String::from("unable to create")
     })?;
-
-  let rows = records
-    .query(FIND_LOBBY_ID, &[job_id])
-    .map_err(|_e| String::from("unable to query for new lobby"))?;
 
   rows
     .iter()

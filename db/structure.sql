@@ -2,28 +2,32 @@
  */
 create extension if not exists "uuid-ossp";
 
-drop table if exists google_accounts cascade;
+drop schema if exists krumnet;
 
-create table google_accounts (
-  id varchar unique default uuid_generate_v4() PRIMARY KEY,
-  email varchar unique not null,
-  name varchar not null,
-  google_id varchar unique not null,
-  user_id varchar references users(id) not null
-);
+create schema krumnet;
 
-drop table if exists users cascade;
+drop table if exists krumnet.users cascade;
 
-create table users (
+create table krumnet.users (
   id varchar unique default uuid_generate_v4() PRIMARY KEY,
   default_email varchar unique not null,
   name varchar not null,
   created_at timestamp default now()
 );
 
-drop table if exists lobbies cascade;
+drop table if exists krumnet.google_accounts cascade;
 
-create table lobbies (
+create table krumnet.google_accounts (
+  id varchar unique default uuid_generate_v4() PRIMARY KEY,
+  email varchar unique not null,
+  name varchar not null,
+  google_id varchar unique not null,
+  user_id varchar references krumnet.users(id) not null
+);
+
+drop table if exists krumnet.lobbies cascade;
+
+create table krumnet.lobbies (
   id varchar unique default uuid_generate_v4() PRIMARY KEY,
   job_id varchar not null,
   name varchar not null,
@@ -35,32 +39,32 @@ create table lobbies (
   created_at timestamp default now()
 );
 
-drop table if exists lobby_memberships cascade;
+drop table if exists krumnet.lobby_memberships cascade;
 
-create table lobby_memberships (
+create table krumnet.lobby_memberships (
   id varchar unique default uuid_generate_v4() PRIMARY KEY,
-  user_id varchar references users(id) not null,
-  lobby_id varchar references lobbies(id) not null,
-  invited_by varchar references users(id),
+  user_id varchar references krumnet.users(id) not null,
+  lobby_id varchar references krumnet.lobbies(id) not null,
+  invited_by varchar references krumnet.users(id),
   permissions bit(10) not null,
   joined_at timestamp,
   left_at timestamp
 );
 
-drop table if exists games cascade;
+drop table if exists krumnet.games cascade;
 
-create table games (
+create table krumnet.games (
   id varchar unique default uuid_generate_v4() PRIMARY KEY,
-  lobby_id varchar references lobbies(id) not null,
+  lobby_id varchar references krumnet.lobbies(id) not null,
   created_at timestamp default now()
 );
 
-drop table if exists game_memberships cascade;
+drop table if exists krumnet.game_memberships cascade;
 
-create table game_memberships (
+create table krumnet.game_memberships (
   id varchar unique default uuid_generate_v4() PRIMARY KEY,
-  user_id varchar references users(id) not null,
-  game_id varchar references games(id) not null,
+  user_id varchar references krumnet.users(id) not null,
+  game_id varchar references krumnet.games(id) not null,
   permissions bit(10) not null,
   created_at timestamp default now()
 );
