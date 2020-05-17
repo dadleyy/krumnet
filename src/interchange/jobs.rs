@@ -4,8 +4,13 @@ use std::time::SystemTime;
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "snake_case", tag = "t", content = "c")]
 pub enum Job {
-  CreateLoby {
+  CreateLobby {
     creator: String,
+    result: Option<Result<String, String>>,
+  },
+  CreateGame {
+    creator: String,
+    lobby_id: String,
     result: Option<Result<String, String>>,
   },
 }
@@ -36,7 +41,8 @@ pub struct QueuedJob {
 impl QueuedJob {
   pub fn user(&self) -> Option<String> {
     match &self.job {
-      Job::CreateLoby { creator, result: _ } => Some(creator.clone()),
+      Job::CreateLobby { creator, result: _ } => Some(creator.clone()),
+      Job::CreateGame { creator, .. } => Some(creator.clone()),
     }
   }
 }

@@ -26,6 +26,7 @@ pub struct LobbyDetails {
 #[serde(rename_all = "snake_case", tag = "kind", content = "data")]
 pub enum JobResult {
   NewLobby { id: String },
+  NewGame { id: String },
 }
 
 #[derive(Debug, Serialize)]
@@ -47,7 +48,14 @@ impl From<QueuedJob> for JobHandle {
     let id = job.id.clone();
 
     match job.job {
-      Job::CreateLoby { creator: _, result } => {
+      Job::CreateGame { result, .. } => {
+        let result = result.map(|res| match res {
+          Ok(id) => WrappedJobResult::Success(JobResult::NewGame { id }),
+          Err(e) => WrappedJobResult::Failure(e),
+        });
+        JobHandle { id, result }
+      }
+      Job::CreateLobby { creator: _, result } => {
         let result = result.map(|res| match res {
           Ok(id) => WrappedJobResult::Success(JobResult::NewLobby { id }),
           Err(e) => WrappedJobResult::Failure(e),

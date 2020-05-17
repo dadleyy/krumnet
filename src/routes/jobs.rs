@@ -77,7 +77,7 @@ mod test {
     let uid = String::from("s-123");
     let job = QueuedJob {
       id: String::from("s-job"),
-      job: Job::CreateLoby {
+      job: Job::CreateLobby {
         creator: uid.clone(),
         result: None,
       },
@@ -91,7 +91,7 @@ mod test {
     let uid = String::from("s-123");
     let job = QueuedJob {
       id: String::from("s-job"),
-      job: Job::CreateLoby {
+      job: Job::CreateLobby {
         creator: format!("{}-456", uid.clone()),
         result: None,
       },
@@ -108,7 +108,7 @@ mod test {
     let uid = String::from("s-123");
     let job = QueuedJob {
       id: String::from("s-job"),
-      job: Job::CreateLoby {
+      job: Job::CreateLobby {
         creator: uid.clone(),
         result: None,
       },

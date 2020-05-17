@@ -55,6 +55,7 @@ drop table if exists krumnet.games cascade;
 
 create table krumnet.games (
   id varchar unique default uuid_generate_v4() PRIMARY KEY,
+  job_id varchar not null,
   lobby_id varchar references krumnet.lobbies(id) not null,
   created_at timestamp default now()
 );
@@ -69,3 +70,13 @@ create table krumnet.game_memberships (
   created_at timestamp default now()
 );
 
+drop table if exists krumnet.game_rounds cascade;
+
+create table krumnet.game_rounds (
+  id varchar unique default uuid_generate_v4() PRIMARY KEY,
+  game_id varchar references krumnet.games(id) not null,
+  round_no int not null,
+  created_at timestamp default now(),
+  completed_at timestamp,
+  UNIQUE (game_id, round_no)
+);

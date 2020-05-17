@@ -12,8 +12,8 @@ use crate::{
   errors, http::Uri, interchange, read_size_async, records::Row, Authority, Context, Response,
 };
 
-const LOAD_LOBBY_DETAILS: &'static str = include_str!("./data-store/load-lobby-detail.sql");
-const LOAD_LOBBY_MEMBERS: &'static str = include_str!("./data-store/load-lobby-members.sql");
+pub const LOAD_LOBBY_DETAILS: &'static str = include_str!("./data-store/load-lobby-detail.sql");
+pub const LOAD_LOBBY_MEMBERS: &'static str = include_str!("./data-store/load-lobby-members.sql");
 
 #[derive(Deserialize, Debug)]
 pub struct Payload {
@@ -107,7 +107,7 @@ where
 
   let job_id = context
     .jobs()
-    .queue(&interchange::jobs::Job::CreateLoby {
+    .queue(&interchange::jobs::Job::CreateLobby {
       creator: uid.clone(),
       result: None,
     })

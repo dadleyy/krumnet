@@ -1,1 +1,6 @@
-select id, name, default_email from krumnet.users where id = $1;
+select
+  u.id, u.name, u.default_email
+from
+  krumnet.users as u
+where
+  id = $1;

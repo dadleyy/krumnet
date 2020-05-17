@@ -1,6 +1,7 @@
 use log::info;
 use std::io::Result;
 
+pub mod games;
 pub mod jobs;
 pub mod lobbies;
 

@@ -93,6 +93,7 @@ where
       debug!("attempting lookup for specific lobby");
       routes::lobbies::details(&ctx, &uri).await
     }
+    (RequestMethod::POST, "/games") => routes::games::create(&ctx, &mut connection).await,
     (RequestMethod::POST, "/lobbies") => routes::lobbies::create(&ctx, &mut connection).await,
     (RequestMethod::GET, "/auth/identify") => routes::identify(&ctx).await,
     (RequestMethod::GET, "/auth/destroy") => routes::destroy(&ctx, &uri).await,

@@ -3,15 +3,14 @@ use gumdrop::{parse_args_default_or_exit, Options as Gumdrop};
 use log::{debug, info, warn};
 use std::io::Result;
 
-use krumnet::records::Row;
 use krumnet::{
   interchange::jobs::{Job, QueuedJob},
-  names, Configuration, JobStore, RecordStore,
+  Configuration, JobStore, RecordStore,
 };
 
+mod handlers;
+
 const MAX_WORKER_FAILS: u8 = 10;
-const FIND_USER: &'static str = include_str!("data-store/find-user-by-id.sql");
-const CREATE_LOBBY: &'static str = include_str!("data-store/create-lobby.sql");
 
 #[derive(Debug, Gumdrop)]
 struct Options {
@@ -26,68 +25,19 @@ struct Context<'a> {
   records: &'a RecordStore,
 }
 
-#[derive(Debug)]
-struct UserInfo {
-  id: String,
-  name: String,
-  email: String,
-}
-
-fn parse_user(row: &Row) -> Option<UserInfo> {
-  let id = row.try_get(0).ok()?;
-  let name = row.try_get(1).ok()?;
-  let email = row.try_get(2).ok()?;
-  Some(UserInfo { id, email, name })
-}
-
-fn make_lobby(
-  records: &RecordStore,
-  job_id: &String,
-  creator: &String,
-) -> std::result::Result<String, String> {
-  let mask = bit_vec::BitVec::from_elem(10, false);
-  let name = names::get();
-
-  let rows = records
-    .query(FIND_USER, &[creator])
-    .map_err(|_e| String::from("unable to query users for creator"))?;
-
-  let user = rows
-    .iter()
-    .nth(0)
-    .and_then(parse_user)
-    .ok_or(String::from("unable to find user"))?;
-
-  let rows = records
-    .query(CREATE_LOBBY, &[job_id, &name, &mask, &user.id])
-    .map_err(|e| {
-      warn!("unable to create lobby - {}", e);
-      String::from("unable to create")
-    })?;
-
-  rows
-    .iter()
-    .nth(0)
-    .and_then(|row| row.try_get::<_, String>(0).ok())
-    .ok_or(String::from("unable to parse as string"))
-}
-
-async fn create_lobby(job_id: &String, creator: &String, records: &RecordStore) -> QueuedJob {
-  let result = make_lobby(records, job_id, creator);
-
-  QueuedJob {
-    id: job_id.clone(),
-    job: Job::CreateLoby {
-      result: Some(result),
-      creator: creator.clone(),
-    },
-  }
-}
-
 impl<'a> Context<'a> {
   pub async fn execute(&self, job: &QueuedJob) -> QueuedJob {
     match &job.job {
-      Job::CreateLoby { creator, .. } => create_lobby(&job.id, &creator, &self.records).await,
+      Job::CreateLobby { creator, .. } => {
+        debug!("passing create lobby job off to create lobby handler");
+        handlers::lobbies::create_lobby(&job.id, &creator, &self.records).await
+      }
+      Job::CreateGame {
+        creator, lobby_id, ..
+      } => {
+        debug!("passing create game off to handler");
+        handlers::lobbies::create_game(&job.id, &creator, &lobby_id, &self.records).await
+      }
     }
   }
 }
