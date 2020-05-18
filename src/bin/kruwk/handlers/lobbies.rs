@@ -24,6 +24,8 @@ const FIND_USER: &'static str = include_str!("../data-store/find-user-by-id.sql"
 const CREATE_LOBBY: &'static str = include_str!("../data-store/create-lobby.sql");
 const LOAD_LOBBY_DETAILS: &'static str = include_str!("../data-store/load-lobby-details-by-id.sql");
 const CREATE_GAME_FOR_LOBBY: &'static str = include_str!("../data-store/create-game-for-lobby.sql");
+const CREATE_MEMBERSHIPS_FOR_GAME: &'static str =
+  include_str!("../data-store/create-game-members.sql");
 
 fn make_lobby(
   records: &RecordStore,
@@ -112,12 +114,12 @@ async fn make_game(
 
   info!("game '{}' created for lobby '{}'", gid, lid);
 
-  /*
-  records.query(CREATE_GAME_FOR_LOBBY, &[&lid]).map_err(|e| {
-    warn!("create lobby query failed - {}", e);
-    String::from("unable to query users for creator")
-  })?;
-  */
+  records
+    .query(CREATE_MEMBERSHIPS_FOR_GAME, &[&gid, &lid])
+    .map_err(|e| {
+      warn!("game membership creation failed - {}", e);
+      String::from("unable to query users for creator")
+    })?;
 
   Ok(String::from(gid))
 }

@@ -80,3 +80,14 @@ create table krumnet.game_rounds (
   completed_at timestamp,
   UNIQUE (game_id, round_no)
 );
+
+drop table if exists krumnet.game_round_entries cascade;
+
+create table krumnet.game_round_entries (
+  id varchar unique default uuid_generate_v4() PRIMARY KEY,
+  round_id varchar references krumnet.game_rounds(id) not null,
+  member_id varchar references krumnet.game_memberships(id) not null,
+  entry varchar,
+  created_at timestamp default now(),
+  UNIQUE (round_id, member_id)
+);
