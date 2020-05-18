@@ -6,7 +6,7 @@ use async_std::sync::RwLock;
 
 use jsonwebtoken::{encode, EncodingKey, Header};
 use kramer::{execute, Arity, Command, Insertion, StringCommand};
-use log::info;
+use log::{info, trace, warn};
 use serde::{Deserialize, Serialize};
 
 use crate::configuration::Configuration;
@@ -72,14 +72,18 @@ impl Session {
 
   pub async fn get(&self, key: &String) -> Result<String, Error> {
     let lookup = lookup_command(&self._session_prefix, key);
+    trace!("writing command {} to redis connection", lookup);
     let mut stream = self._stream.write().await;
 
     match execute(&mut (*stream), lookup).await? {
       kramer::Response::Item(kramer::ResponseValue::String(id)) => Ok(id),
-      _ => Err(Error::new(
-        ErrorKind::Other,
-        format!("Unable to find user for token '{}'", key),
-      )),
+      r => {
+        warn!("strange response from session lookup - {:?}", r);
+        Err(Error::new(
+          ErrorKind::Other,
+          format!("Unable to find user for token '{}'", key),
+        ))
+      }
     }
   }
 

@@ -1,6 +1,6 @@
+use chrono::{DateTime, Utc};
 use std::io::Result;
 use std::marker::Unpin;
-use std::time::SystemTime;
 
 use async_std::io::Read;
 use bit_vec::BitVec;
@@ -26,8 +26,8 @@ fn parse_member_row(row: &Row) -> Option<interchange::http::LobbyMember> {
   let email = row.try_get::<_, String>(2).ok()?;
   let name = row.try_get::<_, String>(3).ok()?;
   let invited_by = row.try_get::<_, Option<String>>(4).ok()?;
-  let joined_at = row.try_get::<_, Option<SystemTime>>(5).ok()?;
-  let left_at = row.try_get::<_, Option<SystemTime>>(6).ok()?;
+  let joined_at = row.try_get::<_, Option<DateTime<Utc>>>(5).ok()?;
+  let left_at = row.try_get::<_, Option<DateTime<Utc>>>(6).ok()?;
 
   Some(interchange::http::LobbyMember {
     member_id,
@@ -65,7 +65,7 @@ pub async fn details(context: &Context, uri: &Uri) -> Result<Response> {
       let name = r.try_get::<_, String>(1).map_err(errors::humanize_error)?;
       let _settings = r.try_get::<_, BitVec>(2).map_err(errors::humanize_error)?;
       let _created = r
-        .try_get::<_, SystemTime>(3)
+        .try_get::<_, DateTime<Utc>>(3)
         .map_err(errors::humanize_error)?;
 
       let matches = r.try_get::<_, i64>(4).map_err(errors::humanize_error)?;

@@ -79,12 +79,28 @@ where
       debug!("cors preflight request");
       Ok(Response::default().cors(ctx.cors()))
     }
+    // Authentication routing
     (RequestMethod::GET, "/auth/redirect") => {
       debug!("initiating oauth flow");
       oauth::redirect(&ctx)
     }
+    (RequestMethod::GET, "/auth/identify") => routes::identify(&ctx).await,
+    (RequestMethod::GET, "/auth/destroy") => routes::destroy(&ctx, &uri).await,
+    (RequestMethod::GET, "/auth/callback") => {
+      debug!("oauth callback");
+      oauth::callback(&ctx, &uri).await
+    }
+    // Basic health check for sanity
+    (RequestMethod::GET, "/health-check") => {
+      info!("health-check - '{}'", path);
+      health_check(&ctx).await
+    }
+
+    // Jobs
     (RequestMethod::GET, "/jobs") => routes::ensure_authorized(&ctx)
       .unwrap_or_else(|| task::block_on(async { routes::jobs::find(&ctx, &uri).await })),
+
+    // Lobbies
     (RequestMethod::GET, "/lobbies") => {
       debug!("attempting to search all lobbies");
       Ok(Response::default())
@@ -93,18 +109,11 @@ where
       debug!("attempting lookup for specific lobby");
       routes::lobbies::details(&ctx, &uri).await
     }
-    (RequestMethod::POST, "/games") => routes::games::create(&ctx, &mut connection).await,
     (RequestMethod::POST, "/lobbies") => routes::lobbies::create(&ctx, &mut connection).await,
-    (RequestMethod::GET, "/auth/identify") => routes::identify(&ctx).await,
-    (RequestMethod::GET, "/auth/destroy") => routes::destroy(&ctx, &uri).await,
-    (RequestMethod::GET, "/auth/callback") => {
-      debug!("oauth callback");
-      oauth::callback(&ctx, &uri).await
-    }
-    (RequestMethod::GET, "/health-check") => {
-      info!("health-check - '{}'", path);
-      health_check(&ctx).await
-    }
+
+    (RequestMethod::POST, "/games") => routes::games::create(&ctx, &mut connection).await,
+    (RequestMethod::GET, "/games") => routes::games::find(&ctx, &uri).await,
+
     _ => {
       debug!("not-found - '{}'", path);
       Ok(Response::not_found().cors(ctx.cors()))

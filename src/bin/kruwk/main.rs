@@ -43,7 +43,7 @@ impl<'a> Context<'a> {
 }
 
 fn main() -> Result<()> {
-  env_logger::init();
+  env_logger::builder().format_timestamp_millis().init();
   let opts = parse_args_default_or_exit::<Options>();
 
   if opts.help {

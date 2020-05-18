@@ -1,6 +1,36 @@
 use crate::interchange::jobs::{Job, QueuedJob};
+use chrono::{DateTime, Utc};
 use serde::Serialize;
-use std::time::SystemTime;
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct GameMember {
+  pub member_id: String,
+  pub user_id: String,
+  pub email: String,
+  pub name: String,
+  #[serde(with = "chrono::serde::ts_milliseconds")]
+  pub joined: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct GameRound {
+  pub id: String,
+  pub position: u32,
+  #[serde(with = "chrono::serde::ts_milliseconds_option")]
+  pub completed: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct GameDetails {
+  pub id: String,
+  #[serde(with = "chrono::serde::ts_milliseconds")]
+  pub created: DateTime<Utc>,
+  pub members: Vec<GameMember>,
+  pub rounds: Vec<GameRound>,
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -10,8 +40,10 @@ pub struct LobbyMember {
   pub name: String,
   pub email: String,
   pub invited_by: Option<String>,
-  pub joined_at: Option<SystemTime>,
-  pub left_at: Option<SystemTime>,
+  #[serde(with = "chrono::serde::ts_milliseconds_option")]
+  pub joined_at: Option<DateTime<Utc>>,
+  #[serde(with = "chrono::serde::ts_milliseconds_option")]
+  pub left_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize)]

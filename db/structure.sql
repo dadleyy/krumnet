@@ -12,7 +12,7 @@ create table krumnet.users (
   id varchar unique default uuid_generate_v4() PRIMARY KEY,
   default_email varchar unique not null,
   name varchar not null,
-  created_at timestamp default now()
+  created_at timestamp with time zone default now()
 );
 
 drop table if exists krumnet.google_accounts cascade;
@@ -36,7 +36,7 @@ create table krumnet.lobbies (
   * | ---- | -------------  |
   * | 1    | public/private |
   */
-  created_at timestamp default now()
+  created_at timestamp with time zone default now()
 );
 
 drop table if exists krumnet.lobby_memberships cascade;
@@ -47,8 +47,8 @@ create table krumnet.lobby_memberships (
   lobby_id varchar references krumnet.lobbies(id) not null,
   invited_by varchar references krumnet.users(id),
   permissions bit(10) not null,
-  joined_at timestamp,
-  left_at timestamp
+  joined_at timestamp with time zone,
+  left_at timestamp with time zone
 );
 
 drop table if exists krumnet.games cascade;
@@ -57,7 +57,7 @@ create table krumnet.games (
   id varchar unique default uuid_generate_v4() PRIMARY KEY,
   job_id varchar not null,
   lobby_id varchar references krumnet.lobbies(id) not null,
-  created_at timestamp default now()
+  created_at timestamp with time zone default now()
 );
 
 drop table if exists krumnet.game_memberships cascade;
@@ -67,7 +67,7 @@ create table krumnet.game_memberships (
   user_id varchar references krumnet.users(id) not null,
   game_id varchar references krumnet.games(id) not null,
   permissions bit(10) not null,
-  created_at timestamp default now()
+  created_at timestamp with time zone default now()
 );
 
 drop table if exists krumnet.game_rounds cascade;
@@ -75,10 +75,10 @@ drop table if exists krumnet.game_rounds cascade;
 create table krumnet.game_rounds (
   id varchar unique default uuid_generate_v4() PRIMARY KEY,
   game_id varchar references krumnet.games(id) not null,
-  round_no int not null,
-  created_at timestamp default now(),
-  completed_at timestamp,
-  UNIQUE (game_id, round_no)
+  position int not null,
+  created_at timestamp with time zone default now(),
+  completed_at timestamp with time zone,
+  UNIQUE (game_id, position)
 );
 
 drop table if exists krumnet.game_round_entries cascade;
@@ -88,6 +88,6 @@ create table krumnet.game_round_entries (
   round_id varchar references krumnet.game_rounds(id) not null,
   member_id varchar references krumnet.game_memberships(id) not null,
   entry varchar,
-  created_at timestamp default now(),
+  created_at timestamp with time zone default now(),
   UNIQUE (round_id, member_id)
 );

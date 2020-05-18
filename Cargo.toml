@@ -27,7 +27,6 @@ rand = "^0.7"
 url = "^2.1.1"
 http = "^0.2"
 
-chrono = "^0.4"
 chrono-tz = "^0.5"
 gumdrop = "^0.8"
 serde_json = "^1.0"
@@ -41,7 +40,7 @@ jsonwebtoken = "^7.1.0"
 
 [dependencies.postgres]
 version = "^0.17.3"
-features = ["with-bit-vec-0_6"]
+features = ["with-bit-vec-0_6", "with-chrono-0_4"]
 
 [dependencies.kramer]
 version = "^1.0.1"
@@ -55,8 +54,13 @@ features = ["v4"]
 version = "^1.0"
 features = ["derive"]
 
+[dependencies.chrono]
+version = "^0.4"
+features = ["serde"]
+
 [dev-dependencies]
 mockito = "^0.25"
+
 
 [profile.release]
 codegen-units = 1

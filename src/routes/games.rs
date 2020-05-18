@@ -1,14 +1,133 @@
+use chrono::{DateTime, Utc};
 use log::{debug, warn};
 use serde::Deserialize;
 use serde_json::from_slice as deserialize;
 use std::io::Result;
 
 use super::lobbies::LOAD_LOBBY_DETAILS;
-use crate::{interchange, read_size_async, Authority, Context, Response};
+use crate::{
+  errors,
+  http::{query as qs, Uri},
+  interchange, read_size_async, Authority, Context, Response,
+};
+
+const LOAD_GAME: &'static str = include_str!("data-store/load-game-details.sql");
+const LOAD_MEMBERS: &'static str = include_str!("data-store/load-game-members.sql");
+const LOAD_ROUNDS: &'static str = include_str!("data-store/load-rounds.sql");
 
 #[derive(Deserialize)]
 pub struct CreatePayload {
   pub lobby_id: String,
+}
+
+pub async fn find_game(context: &Context, uid: &String, gid: &String) -> Result<Response> {
+  let (id, created) = context
+    .records()
+    .query(LOAD_GAME, &[gid, uid])?
+    .iter()
+    .nth(0)
+    .and_then(|r| {
+      let id = r.try_get::<_, String>(0).ok()?;
+      let created = r
+        .try_get::<_, DateTime<Utc>>(1)
+        .map_err(|e| {
+          warn!("unable to parse time value as datetime - {}", e);
+          errors::e("bad date time")
+        })
+        .ok()?;
+
+      Some((id, created))
+    })
+    .ok_or(errors::e("Unable to parse game data"))?;
+
+  debug!("found game '{}', created '{:?}'", id, created);
+
+  let rounds = context
+    .records()
+    .query(LOAD_ROUNDS, &[&id])?
+    .iter()
+    .filter_map(|r| {
+      let id = r.try_get::<_, String>(0).ok()?;
+      let position = r
+        .try_get::<_, i32>(1)
+        .map_err(|e| {
+          warn!("unable to convert round position to rust - {}", e);
+          e
+        })
+        .ok()? as u32;
+
+      let completed = r.try_get::<_, Option<DateTime<Utc>>>(2).ok()?;
+      debug!("found round '{}' ({:?}, {:?})", id, position, completed);
+      Some(interchange::http::GameRound {
+        id,
+        position,
+        completed,
+      })
+    })
+    .collect();
+
+  let members = context
+    .records()
+    .query(LOAD_MEMBERS, &[&id])?
+    .iter()
+    .filter_map(|r| {
+      let member_id = r.try_get::<_, String>(0).ok()?;
+      let joined = r.try_get::<_, DateTime<Utc>>(2).ok()?;
+      let user_id = r.try_get::<_, String>(3).ok()?;
+      let email = r.try_get::<_, String>(4).ok()?;
+      let name = r.try_get::<_, String>(5).ok()?;
+      debug!("found member '{}'", id);
+      Some(interchange::http::GameMember {
+        member_id,
+        user_id,
+        email,
+        name,
+        joined,
+      })
+    })
+    .collect();
+
+  debug!("found members[{:?}] rounds[{:?}]", members, &rounds);
+
+  let result = interchange::http::GameDetails {
+    id,
+    created,
+    members,
+    rounds,
+  };
+
+  Response::ok_json(&result).map(|r| r.cors(context.cors()))
+}
+
+pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
+  let uid = match context.authority() {
+    Authority::User { id, .. } => id,
+    Authority::None => return Ok(Response::not_found().cors(context.cors())),
+  };
+  let query = uri.query().unwrap_or_default().as_bytes();
+  let ids = qs::parse(query)
+    .filter_map(|(k, v)| {
+      if k == "ids[]" {
+        Some(String::from(v))
+      } else {
+        None
+      }
+    })
+    .collect::<Vec<String>>();
+
+  if ids.len() == 0 {
+    debug!("find all games not implemented yet");
+    return Ok(Response::not_found().cors(context.cors()));
+  }
+
+  if ids.len() == 1 {
+    let gid = ids.iter().nth(0).ok_or(errors::e("invalid id"))?;
+    debug!("attempting to find game from single id - {:?}", gid);
+    return find_game(context, uid, gid).await;
+  }
+
+  debug!("attempting to find game from ids - {:?}", ids);
+  Ok(Response::not_found().cors(context.cors()))
 }
 
 pub async fn create<R>(context: &Context, reader: &mut R) -> Result<Response>
