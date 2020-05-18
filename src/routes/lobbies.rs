@@ -15,6 +15,7 @@ use crate::{
 pub const LOAD_LOBBY_DETAILS: &'static str = include_str!("./data-store/load-lobby-detail.sql");
 pub const LOAD_LOBBY_MEMBERS: &'static str = include_str!("./data-store/load-lobby-members.sql");
 pub const LOBBY_FOR_USER: &'static str = include_str!("./data-store/lobbies-for-user.sql");
+pub const GAMES_FOR_LOBBY: &'static str = include_str!("./data-store/load-lobby-games.sql");
 
 #[derive(Deserialize, Debug)]
 pub struct Payload {
@@ -41,9 +42,29 @@ fn parse_member_row(row: &Row) -> Option<interchange::http::LobbyMember> {
   })
 }
 
+pub fn load_games(context: &Context, id: &String) -> Result<Vec<interchange::http::LobbyGame>> {
+  let rows = context.records().query(GAMES_FOR_LOBBY, &[id])?;
+  debug!("found {} game rows", rows.len());
+  rows
+    .iter()
+    .map(|row| {
+      let id = row.try_get(0).map_err(errors::humanize_error)?;
+      let created = row.try_get(1).map_err(errors::humanize_error)?;
+      let name = row.try_get(2).map_err(errors::humanize_error)?;
+      let rounds_remaining = row.try_get(3).map_err(errors::humanize_error)?;
+      Ok(interchange::http::LobbyGame {
+        id,
+        created,
+        name,
+        rounds_remaining,
+      })
+    })
+    .collect()
+}
+
 pub fn load_members(context: &Context, id: &String) -> Result<Vec<interchange::http::LobbyMember>> {
   let rows = context.records().query(LOAD_LOBBY_MEMBERS, &[id])?;
-  debug!("found {} rows", rows.len());
+  debug!("found {} member rows", rows.len());
   Ok(rows.iter().filter_map(parse_member_row).collect())
 }
 
@@ -78,7 +99,13 @@ pub async fn details(context: &Context, uri: &Uri) -> Result<Response> {
 
       debug!("found match for lobby '{}' details, loading members", name);
       let members = load_members(&context, &id)?;
-      let details = interchange::http::LobbyDetails { id, name, members };
+      let games = load_games(&context, &id)?;
+      let details = interchange::http::LobbyDetails {
+        id,
+        name,
+        members,
+        games,
+      };
       Ok(Response::ok_json(&details)?.cors(context.cors()))
     })
     .unwrap_or_else(|| Ok(Response::not_found().cors(context.cors())))

@@ -17,4 +17,5 @@ on
 where
   memberships.user_id = $1
 group by
-  lobbies.id;
+  lobbies.id
+limit 10;

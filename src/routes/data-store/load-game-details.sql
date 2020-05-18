@@ -1,6 +1,7 @@
 select
   game.id,
   game.created_at,
+  game.name,
   count(member.id)
 from
   krumnet.games as game

@@ -35,6 +35,11 @@ pub struct GameMember {
 pub struct GameRound {
   pub id: String,
   pub position: u32,
+  pub prompt: Option<String>,
+  #[serde(with = "chrono::serde::ts_milliseconds_option")]
+  pub started: Option<DateTime<Utc>>,
+  #[serde(with = "chrono::serde::ts_milliseconds")]
+  pub created: DateTime<Utc>,
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
   pub completed: Option<DateTime<Utc>>,
 }
@@ -43,6 +48,7 @@ pub struct GameRound {
 #[serde(rename_all = "snake_case")]
 pub struct GameDetails {
   pub id: String,
+  pub name: String,
   #[serde(with = "chrono::serde::ts_milliseconds")]
   pub created: DateTime<Utc>,
   pub members: Vec<GameMember>,
@@ -65,10 +71,21 @@ pub struct LobbyMember {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub struct LobbyGame {
+  pub id: String,
+  pub name: String,
+  pub rounds_remaining: i64,
+  #[serde(with = "chrono::serde::ts_milliseconds")]
+  pub created: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub struct LobbyDetails {
   pub id: String,
   pub name: String,
   pub members: Vec<LobbyMember>,
+  pub games: Vec<LobbyGame>,
 }
 
 #[derive(Debug, Serialize)]

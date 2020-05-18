@@ -20,8 +20,13 @@ pub struct CreatePayload {
   pub lobby_id: String,
 }
 
+fn log_err<E: std::error::Error>(e: E) -> E {
+  warn!("error - {}", e);
+  e
+}
+
 pub async fn find_game(context: &Context, uid: &String, gid: &String) -> Result<Response> {
-  let (id, created) = context
+  let (id, created, name) = context
     .records()
     .query(LOAD_GAME, &[gid, uid])?
     .iter()
@@ -35,8 +40,9 @@ pub async fn find_game(context: &Context, uid: &String, gid: &String) -> Result<
           errors::e("bad date time")
         })
         .ok()?;
+      let name = r.try_get::<_, String>(2).ok()?;
 
-      Some((id, created))
+      Some((id, created, name))
     })
     .ok_or(errors::e("Unable to parse game data"))?;
 
@@ -46,21 +52,22 @@ pub async fn find_game(context: &Context, uid: &String, gid: &String) -> Result<
     .records()
     .query(LOAD_ROUNDS, &[&id])?
     .iter()
-    .filter_map(|r| {
-      let id = r.try_get::<_, String>(0).ok()?;
-      let position = r
-        .try_get::<_, i32>(1)
-        .map_err(|e| {
-          warn!("unable to convert round position to rust - {}", e);
-          e
-        })
-        .ok()? as u32;
+    .filter_map(|row| {
+      let id = row.try_get(0).map_err(log_err).ok()?;
+      let position = row.try_get::<_, i32>(1).map_err(log_err).ok()? as u32;
+      let prompt = row.try_get(2).map_err(log_err).ok()?;
+      let created = row.try_get(3).map_err(log_err).ok()?;
+      let started = row.try_get(4).map_err(log_err).ok()?;
+      let completed = row.try_get(5).map_err(log_err).ok()?;
 
-      let completed = r.try_get::<_, Option<DateTime<Utc>>>(2).ok()?;
       debug!("found round '{}' ({:?}, {:?})", id, position, completed);
+
       Some(interchange::http::GameRound {
         id,
         position,
+        prompt,
+        created,
+        started,
         completed,
       })
     })
@@ -92,6 +99,7 @@ pub async fn find_game(context: &Context, uid: &String, gid: &String) -> Result<
   let result = interchange::http::GameDetails {
     id,
     created,
+    name,
     members,
     rounds,
   };

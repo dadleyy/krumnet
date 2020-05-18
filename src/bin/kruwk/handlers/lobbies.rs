@@ -97,9 +97,10 @@ async fn make_game(
     .ok_or(String::from("unable to find lobby"))?;
 
   debug!("creating game for lobby '{}' (user '{}')", lid, user.email);
+  let name = names::get();
 
   let gid = records
-    .query(CREATE_GAME_FOR_LOBBY, &[&lid, job_id])
+    .query(CREATE_GAME_FOR_LOBBY, &[&lid, &name, job_id])
     .map_err(|e| {
       warn!("create lobby query failed - {}", e);
       String::from("unable to query users for creator")
