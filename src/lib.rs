@@ -103,7 +103,7 @@ where
     // Lobbies
     (RequestMethod::GET, "/lobbies") => {
       debug!("attempting to search all lobbies");
-      Ok(Response::default())
+      routes::lobbies::find(&ctx, &uri).await
     }
     (RequestMethod::GET, path) if path.starts_with("/lobbies") => {
       debug!("attempting lookup for specific lobby");

@@ -4,7 +4,7 @@ use std::marker::Unpin;
 
 use async_std::io::Read;
 use bit_vec::BitVec;
-use log::{debug, info};
+use log::{debug, info, warn};
 use serde::Deserialize;
 use serde_json::from_slice as deserialize;
 
@@ -14,6 +14,7 @@ use crate::{
 
 pub const LOAD_LOBBY_DETAILS: &'static str = include_str!("./data-store/load-lobby-detail.sql");
 pub const LOAD_LOBBY_MEMBERS: &'static str = include_str!("./data-store/load-lobby-members.sql");
+pub const LOBBY_FOR_USER: &'static str = include_str!("./data-store/lobbies-for-user.sql");
 
 #[derive(Deserialize, Debug)]
 pub struct Payload {
@@ -81,6 +82,63 @@ pub async fn details(context: &Context, uri: &Uri) -> Result<Response> {
       Ok(Response::ok_json(&details)?.cors(context.cors()))
     })
     .unwrap_or_else(|| Ok(Response::not_found().cors(context.cors())))
+}
+
+pub async fn find(context: &Context, _uri: &Uri) -> Result<Response> {
+  let uid = match context.authority() {
+    Authority::User { id, .. } => id,
+    Authority::None => return Ok(Response::not_found().cors(context.cors())),
+  };
+  debug!("loading lobbies for user '{}'", uid);
+
+  let lobbies = context
+    .records()
+    .query(LOBBY_FOR_USER, &[&uid])?
+    .iter()
+    .filter_map(|r| {
+      debug!("attempting to parse lobby row - {:?}", r.columns());
+
+      let id = r.try_get::<_, String>(0).ok()?;
+      let name = r.try_get::<_, String>(1).ok()?;
+      let created = r
+        .try_get::<_, DateTime<Utc>>(2)
+        .map_err(|e| {
+          warn!("unable to parse game created - {}", e);
+          e
+        })
+        .ok()?;
+      let game_count = r
+        .try_get::<_, i64>(3)
+        .map_err(|e| {
+          warn!("unable to parse game count column - {}", e);
+          e
+        })
+        .ok()?;
+
+      let member_count = r
+        .try_get::<_, i64>(4)
+        .map_err(|e| {
+          warn!("unable to parse member count column - {}", e);
+          e
+        })
+        .ok()?;
+
+      debug!("found lobby '{}'", id);
+
+      Some(interchange::http::LobbyListLobby {
+        id,
+        name,
+        created,
+        game_count,
+        member_count,
+      })
+    })
+    .collect();
+
+  debug!("finished collecting lobbies - {:?}", lobbies);
+
+  Response::ok_json(interchange::http::LobbyList { lobbies })
+    .map(|response| response.cors(context.cors()))
 }
 
 pub async fn create<R>(context: &Context, reader: &mut R) -> Result<Response>

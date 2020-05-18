@@ -4,6 +4,23 @@ use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub struct LobbyListLobby {
+  pub id: String,
+  pub name: String,
+  #[serde(with = "chrono::serde::ts_milliseconds")]
+  pub created: DateTime<Utc>,
+  pub game_count: i64,
+  pub member_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct LobbyList {
+  pub lobbies: Vec<LobbyListLobby>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub struct GameMember {
   pub member_id: String,
   pub user_id: String,

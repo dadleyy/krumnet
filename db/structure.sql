@@ -91,3 +91,14 @@ create table krumnet.game_round_entries (
   created_at timestamp with time zone default now(),
   UNIQUE (round_id, member_id)
 );
+
+drop table if exists krumnet.game_round_entry_votes cascade;
+
+create table krumnet.game_round_entry_votes (
+  id varchar unique default uuid_generate_v4() PRIMARY KEY,
+  round_id varchar references krumnet.game_rounds(id) not null,
+  member_id varchar references krumnet.game_memberships(id) not null,
+  entry_id varchar references krumnet.game_round_entries(id) not null,
+  created_at timestamp with time zone default now(),
+  UNIQUE (round_id, member_id)
+);
