@@ -2,7 +2,7 @@
  */
 create extension if not exists "uuid-ossp";
 
-drop schema if exists krumnet;
+drop schema if exists krumnet cascade;
 
 create schema krumnet;
 
