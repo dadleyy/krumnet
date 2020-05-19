@@ -49,9 +49,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Apt Update
-        run: sudo apt-get update
+        run: apt-get update
       - name: Apt Install
-        run: sudo apt-get install -y postgresql-client libpq-dev libssl-dev
+        run: apt-get install -y postgresql-client libpq-dev libssl-dev
       - name: List Toolchains
         run: rustup toolchain list
       - name: Build main
