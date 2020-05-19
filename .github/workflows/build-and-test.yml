@@ -46,6 +46,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - name: Apt Update
+        run: apt-get update
+      - name: Apt Install
+        run: apt-get install -y postgresql-client libpq-dev libssl-dev
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -56,3 +60,5 @@ jobs:
           use-cross: true
           command: build
           args: --target armv7-unknown-linux-gnueabihf
+      - name: List tarets
+        run: ls -lah target
