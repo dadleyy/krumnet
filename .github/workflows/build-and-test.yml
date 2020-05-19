@@ -42,3 +42,19 @@ jobs:
         run: cargo test --verbose -- --nocapture
         env:
           KRUMNET_TEST_CONFIG_FILE: ci/github-actions/krumnet-config.json
+  dist:
+    runs-on: ubuntu-latest
+    container:
+      image:  rust:1.43.0
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: armv7-unknown-linux-gnueabihf
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --target armv7-unknown-linux-gnueabihf
