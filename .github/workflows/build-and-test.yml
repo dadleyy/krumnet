@@ -45,16 +45,16 @@ jobs:
   dist:
     runs-on: ubuntu-latest
     container:
-      image: rustembedded/cross:armv7-unknown-linux-gnueabihf
+      image: arm32v7/rust:1.31
     steps:
       - uses: actions/checkout@v2
-      - name: Apt Update
+      - name: Apt update
         run: apt-get update
-      - name: Apt Install
+      - name: Apt install
         run: apt-get install -y postgresql-client libpq-dev libssl-dev
-      - name: List Toolchains
+      - name: List toolchains
         run: rustup toolchain list
       - name: Build main
         run: cargo build --verbose
-      - name: List tarets
+      - name: List targets
         run: ls -lah target
