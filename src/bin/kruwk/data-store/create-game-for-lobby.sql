@@ -23,7 +23,7 @@ with new_game as (
             row_number() over () as position,
             v as started
           from
-            generate_series(now() + interval '1 minute', now() + interval '1 minute', '1 minute')
+            generate_series(now() + interval '10 seconds', now() + interval '1 minute', '1 minute')
           as v)
         as nums) as starts
       on ser = starts.position - 1

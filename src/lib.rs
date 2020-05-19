@@ -113,6 +113,11 @@ where
 
     (RequestMethod::POST, "/games") => routes::games::create(&ctx, &mut connection).await,
     (RequestMethod::GET, "/games") => routes::games::find(&ctx, &uri).await,
+    (RequestMethod::GET, "/round-entries") => routes::games::entries(&ctx, &uri).await,
+    (RequestMethod::POST, "/round-entries") => {
+      routes::games::create_entry(&ctx, &mut connection).await
+    }
+    (RequestMethod::GET, "/rounds") => routes::games::rounds(&ctx, &uri).await,
 
     _ => {
       debug!("not-found - '{}'", path);
@@ -121,7 +126,7 @@ where
   }
   .unwrap_or_else(|e| {
     warn!("request handler failed - {}", e);
-    Response::failed()
+    Response::failed().cors(ctx.cors())
   });
 
   connection

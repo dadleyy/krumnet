@@ -4,6 +4,34 @@ use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub struct GameRoundEntry {
+  pub id: String,
+  pub member_id: String,
+  pub round_id: String,
+  pub entry: String,
+  pub created: DateTime<Utc>,
+  pub user_id: String,
+  pub user_name: String,
+  pub user_email: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct GameRoundDetails {
+  pub id: String,
+  pub entries: Vec<GameRoundEntry>,
+  pub prompt: Option<String>,
+  pub position: u32,
+  #[serde(with = "chrono::serde::ts_milliseconds_option")]
+  pub started: Option<DateTime<Utc>>,
+  #[serde(with = "chrono::serde::ts_milliseconds")]
+  pub created: DateTime<Utc>,
+  #[serde(with = "chrono::serde::ts_milliseconds_option")]
+  pub completed: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub struct LobbyListLobby {
   pub id: String,
   pub name: String,
@@ -93,6 +121,7 @@ pub struct LobbyDetails {
 pub enum JobResult {
   NewLobby { id: String },
   NewGame { id: String },
+  Nothing,
 }
 
 #[derive(Debug, Serialize)]
@@ -121,6 +150,10 @@ impl From<QueuedJob> for JobHandle {
         });
         JobHandle { id, result }
       }
+      Job::CheckRoundCompletion { .. } => JobHandle {
+        id,
+        result: Some(WrappedJobResult::Success(JobResult::Nothing)),
+      },
       Job::CreateLobby { creator: _, result } => {
         let result = result.map(|res| match res {
           Ok(id) => WrappedJobResult::Success(JobResult::NewLobby { id }),

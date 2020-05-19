@@ -18,4 +18,6 @@ where
   memberships.user_id = $1
 group by
   lobbies.id
+order by
+  lobbies.created_at desc
 limit 10;

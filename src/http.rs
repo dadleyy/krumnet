@@ -18,6 +18,21 @@ pub use http::{header, Method, Request, StatusCode, Uri};
 pub use url::form_urlencoded as query;
 pub use url::Url;
 
+pub fn query_values<S: std::fmt::Display>(uri: &Uri, key: S) -> Vec<String> {
+  let q = uri.query().unwrap_or_default().as_bytes();
+  let target = format!("{}", key);
+
+  query::parse(q)
+    .filter_map(|(k, v)| {
+      if k.to_string() == target {
+        Some(String::from(v))
+      } else {
+        None
+      }
+    })
+    .collect::<Vec<String>>()
+}
+
 pub async fn read_size_async<R>(reader: &mut R, size: usize) -> Result<Vec<u8>>
 where
   R: Read + Unpin,

@@ -13,6 +13,10 @@ pub enum Job {
     lobby_id: String,
     result: Option<Result<String, String>>,
   },
+  CheckRoundCompletion {
+    round_id: String,
+    result: Option<Result<u8, String>>,
+  },
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -43,6 +47,7 @@ impl QueuedJob {
     match &self.job {
       Job::CreateLobby { creator, result: _ } => Some(creator.clone()),
       Job::CreateGame { creator, .. } => Some(creator.clone()),
+      Job::CheckRoundCompletion { .. } => None,
     }
   }
 }

@@ -28,6 +28,17 @@ struct Context<'a> {
 impl<'a> Context<'a> {
   pub async fn execute(&self, job: &QueuedJob) -> QueuedJob {
     match &job.job {
+      Job::CheckRoundCompletion { round_id, .. } => {
+        debug!("received round completion check job - '{}'", round_id);
+        let result = Some(handlers::games::check_round_completion(round_id, &self.records).await);
+        QueuedJob {
+          id: job.id.clone(),
+          job: Job::CheckRoundCompletion {
+            round_id: round_id.clone(),
+            result,
+          },
+        }
+      }
       Job::CreateLobby { creator, .. } => {
         debug!("passing create lobby job off to create lobby handler");
         handlers::lobbies::create_lobby(&job.id, &creator, &self.records).await
