@@ -42,15 +42,3 @@ jobs:
         run: cargo test --verbose -- --nocapture
         env:
           KRUMNET_TEST_CONFIG_FILE: ci/github-actions/krumnet-config.json
-  dist:
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v2
-      - name: Build main
-        run: cargo build --release
-      - name: Dist preparation
-        run: mkdir -p dist/krumpled
-      - name: Populate dist
-        run: cp target/release/krumnet dist/krumpled && cp target/release/kruwk dist/krumpled
-      - name: Compress dist
-        run: cd dist && tar czvf krumpled.tar.gz ./krumpled
