@@ -45,6 +45,12 @@ jobs:
   dist:
     runs-on: ubuntu-latest
     container:
-      image: arm32v7/debian:buster
+      image: rust:1.43.0
     steps:
       - uses: actions/checkout@v2
+      - name: Update apt
+        run: apt-get update
+      - name: Install packages
+        run: apt-get install -y libssl-dev postgresql-client libpq-dev gcc-arm-linux-gnueabihf
+      - name: Add toolchain
+        run: rustup add armv7-unknown-linux-gnuueabihf
