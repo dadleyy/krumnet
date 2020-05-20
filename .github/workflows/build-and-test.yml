@@ -42,19 +42,3 @@ jobs:
         run: cargo test --verbose -- --nocapture
         env:
           KRUMNET_TEST_CONFIG_FILE: ci/github-actions/krumnet-config.json
-  dist:
-    runs-on: ubuntu-latest
-    container:
-      image: arm32v7/ubuntu
-    steps:
-      - uses: actions/checkout@v2
-      - name: Apt Update
-        run: apt-get update
-      - name: Apt Install
-        run: apt-get install -y postgresql-client libpq-dev libssl-dev
-      - name: List Toolchains
-        run: rustup toolchain list
-      - name: Build main
-        run: cargo build --verbose
-      - name: List tarets
-        run: ls -lah target
