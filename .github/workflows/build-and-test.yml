@@ -80,8 +80,8 @@ jobs:
       - name: Prepare distributable
         run: mkdir -p target/dist/krumpled
       - name: Populate distributable (krumnet)
-        run: cp target/release/krumnet target/dist/krumpled/krumnet
+        run: cp target/armv7-unknown-linux-gnueabihf/release/krumnet target/dist/krumpled/krumnet
       - name: Populate distributable (kruwk)
-        run: cp target/release/kruwk target/dist/krumpled/kruwk
+        run: cp target/armv7-unknown-linux-gnueabihf/release/kruwk target/dist/krumpled/kruwk
       - name: Compress distributable
         run: tar cvzf ./krumpled.tar.gz -C target/dist krumpled
