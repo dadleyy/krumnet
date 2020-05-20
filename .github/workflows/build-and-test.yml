@@ -60,3 +60,5 @@ jobs:
         run: rustup component add --target armv7-unknown-linux-gnueabihf rust-src rust-std rustc-dev
       - name: Build w/ target
         run: cargo build --target armv7-unknown-linux-gnueabihf
+        env:
+          PKG_CONFIG_ALLOW_CROSS: true
