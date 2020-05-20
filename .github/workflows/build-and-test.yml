@@ -73,7 +73,15 @@ jobs:
       - name: Add target components
         run: rustup component add --target armv7-unknown-linux-gnueabihf rust-src rust-std rustc-dev
       - name: Build w/ target
-        run: cargo build --target armv7-unknown-linux-gnueabihf
+        run: cargo build --target armv7-unknown-linux-gnueabihf --release
         env:
           OPENSSL_LIB_DIR: /tmp/openssl-1.0.1t/
           OPENSSL_INCLUDE_DIR: /tmp/openssl-1.0.1t/include
+      - name: Prepare distributable
+        run: mkdir -p target/dist/krumpled
+      - name: Populate distributable (krumnet)
+        run: cp target/release/krumnet target/dist/krumpled/krumnet
+      - name: Populate distributable (kruwk)
+        run: cp target/release/kruwk target/dist/krumpled/kruwk
+      - name: Compress distributable
+        run: tar cvzf ./krumpled.tar.gz -C target/dist krumpled
