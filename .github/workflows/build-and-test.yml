@@ -42,3 +42,9 @@ jobs:
         run: cargo test --verbose -- --nocapture
         env:
           KRUMNET_TEST_CONFIG_FILE: ci/github-actions/krumnet-config.json
+  dist:
+    runs-on: ubuntu-latest
+    container:
+      image: arm32v7/debian:buster
+    steps:
+      - uses: actions/checkout@v2
