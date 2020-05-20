@@ -45,8 +45,7 @@ jobs:
   dist:
     runs-on: ubuntu-latest
     container:
-      image: arm32v7/rust:1.43.0
-      options: --entrypoint /bin/bash
+      image: arm32v7/ubuntu
     steps:
       - uses: actions/checkout@v2
       - name: Apt Update
