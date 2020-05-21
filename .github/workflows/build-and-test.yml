@@ -55,17 +55,17 @@ jobs:
       - name: Install packages
         run: apt-get install -y libssl-dev postgresql-client libpq-dev gcc-arm-linux-gnueabihf
       - name: Download openssl
-        run: cd /tmp && wget https://www.openssl.org/source/openssl-1.0.1t.tar.gz
+        run: cd /tmp && wget https://www.openssl.org/source/openssl-1.1.1g.tar.gz
       - name: Extract openssl
-        run: cd /tmp && tar xzf openssl-1.0.1t.tar.gz
+        run: cd /tmp && tar xzf openssl-1.1.1g.tar.gz
       - name: Configure openssl
-        run: cd /tmp/openssl-1.0.1t && ./config shared
+        run: cd /tmp/openssl-1.1.1g && ./config shared
         env:
           MACHINE: armv7
           ARCH: arm
           CC: arm-linux-gnueabihf-gcc
       - name: Build openssl
-        run: cd /tmp/openssl-1.0.1t && make
+        run: cd /tmp/openssl-1.1.1g && make
         env:
           MACHINE: armv7
           ARCH: arm
@@ -77,8 +77,8 @@ jobs:
       - name: Build w/ target
         run: cargo build --target armv7-unknown-linux-gnueabihf --release
         env:
-          OPENSSL_LIB_DIR: /tmp/openssl-1.0.1t/
-          OPENSSL_INCLUDE_DIR: /tmp/openssl-1.0.1t/include
+          OPENSSL_LIB_DIR: /tmp/openssl-1.1.1g/
+          OPENSSL_INCLUDE_DIR: /tmp/openssl-1.1.1g/include
       - name: Prepare distributable
         run: mkdir -p target/dist/krumpled
       - name: Populate distributable (krumnet)
