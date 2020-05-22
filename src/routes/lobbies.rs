@@ -82,15 +82,21 @@ pub async fn details(context: &Context, uri: &Uri) -> Result<Response> {
     .query(LOAD_LOBBY_DETAILS, &[&id, &uid])?
     .iter()
     .nth(0)
-    .map(|r| {
-      let id = r.try_get::<_, String>(0).map_err(errors::humanize_error)?;
-      let name = r.try_get::<_, String>(1).map_err(errors::humanize_error)?;
-      let _settings = r.try_get::<_, BitVec>(2).map_err(errors::humanize_error)?;
-      let _created = r
+    .map(|row| {
+      let id = row
+        .try_get::<_, String>(0)
+        .map_err(errors::humanize_error)?;
+      let name = row
+        .try_get::<_, String>(1)
+        .map_err(errors::humanize_error)?;
+      let _settings = row
+        .try_get::<_, BitVec>(2)
+        .map_err(errors::humanize_error)?;
+      let _created = row
         .try_get::<_, DateTime<Utc>>(3)
         .map_err(errors::humanize_error)?;
 
-      let matches = r.try_get::<_, i64>(4).map_err(errors::humanize_error)?;
+      let matches = row.try_get::<_, i64>(4).map_err(errors::humanize_error)?;
 
       if matches == 0 {
         debug!("user '{}' is not a member of lobby '{}'", uid, id);
@@ -122,30 +128,29 @@ pub async fn find(context: &Context, _uri: &Uri) -> Result<Response> {
     .records()
     .query(LOBBY_FOR_USER, &[&uid])?
     .iter()
-    .filter_map(|r| {
-      debug!("attempting to parse lobby row - {:?}", r.columns());
-
-      let id = r.try_get::<_, String>(0).ok()?;
-      let name = r.try_get::<_, String>(1).ok()?;
-      let created = r
+    .filter_map(|row| {
+      let id = row.try_get::<_, String>(0).ok()?;
+      let name = row.try_get::<_, String>(1).ok()?;
+      let created = row
         .try_get::<_, DateTime<Utc>>(2)
         .map_err(|e| {
           warn!("unable to parse game created - {}", e);
           e
         })
         .ok()?;
-      let game_count = r
+
+      let member_count = row
         .try_get::<_, i64>(3)
         .map_err(|e| {
-          warn!("unable to parse game count column - {}", e);
+          warn!("unable to parse member count column - {}", e);
           e
         })
         .ok()?;
 
-      let member_count = r
+      let game_count = row
         .try_get::<_, i64>(4)
         .map_err(|e| {
-          warn!("unable to parse member count column - {}", e);
+          warn!("unable to parse game count column - {}", e);
           e
         })
         .ok()?;

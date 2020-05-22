@@ -6,27 +6,29 @@ with new_game as (
   returning
     id
 ) insert into krumnet.game_rounds
-    (position, game_id, started_at)
+    (position, game_id, prompt, started_at)
   select
-    new_rounds.position, new_game.id, new_rounds.started
+    new_rounds.position, new_game.id, new_rounds.prompt, new_rounds.started_at
   from
-    (select
-        ser as position, started
-      from
-        generate_series(0, 3) as ser
+    (
+      select
+        positions.position, numbered_prompts.prompt, starts.started_at
+      from 
+        generate_series(0, 2) as positions (position)
       left join
-        (select
-          nums.position,
-          nums.started
-        from
-          (select
-            row_number() over () as position,
-            v as started
+        (
+          select
+            prompts.prompt, row_number() over () i
           from
-            generate_series(now() + interval '10 seconds', now() + interval '1 minute', '1 minute')
-          as v)
-        as nums) as starts
-      on ser = starts.position - 1
+            krumnet.prompts as prompts tablesample BERNOULLI (10)
+          limit 3
+        ) as numbered_prompts
+      on
+        numbered_prompts.i - 1 = positions.position
+      left join
+        (values (0, now())) as starts (j, started_at)
+      on
+        starts.j = positions.position
     ) as new_rounds,
     new_game
   returning
