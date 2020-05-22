@@ -4,6 +4,7 @@ use std::io::Result;
 pub mod games;
 pub mod jobs;
 pub mod lobbies;
+pub mod lobby_memberships;
 
 use crate::http::{query as qs, Uri};
 use crate::interchange::http::{SessionData, SessionUserData};

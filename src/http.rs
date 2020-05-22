@@ -131,7 +131,7 @@ impl Response {
     header_map.push((ACCESS_CONTROL_REQUEST_HEADERS, CONTENT_TYPE.to_string()));
     header_map.push((
       ACCESS_CONTROL_ALLOW_METHODS,
-      "post, get, put, delete".to_string(),
+      "POST, GET, PUT, DELETE".to_string(),
     ));
 
     Response(code, header_map, body)

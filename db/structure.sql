@@ -67,6 +67,7 @@ drop table if exists krumnet.game_memberships cascade;
 create table krumnet.game_memberships (
   id varchar unique default uuid_generate_v4() PRIMARY KEY,
   user_id varchar references krumnet.users(id) not null,
+  lobby_member_id varchar references krumnet.lobby_memberships(id) not null,
   game_id varchar references krumnet.games(id) not null,
   permissions bit(10) not null,
   created_at timestamp with time zone default now(),

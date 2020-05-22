@@ -111,6 +111,10 @@ where
     }
     (RequestMethod::POST, "/lobbies") => routes::lobbies::create(&ctx, &mut connection).await,
 
+    (RequestMethod::DELETE, "/lobby-memberships") => {
+      routes::lobby_memberships::destroy_membership(&ctx, &mut connection).await
+    }
+
     (RequestMethod::POST, "/games") => routes::games::create(&ctx, &mut connection).await,
     (RequestMethod::GET, "/games") => routes::games::find(&ctx, &uri).await,
     (RequestMethod::GET, "/round-entries") => routes::games::entries(&ctx, &uri).await,

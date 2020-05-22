@@ -138,6 +138,13 @@ pub struct JobHandle {
   pub result: Option<WrappedJobResult>,
 }
 
+fn without_result(id: String) -> JobHandle {
+  JobHandle {
+    id,
+    result: Some(WrappedJobResult::Success(JobResult::Nothing)),
+  }
+}
+
 impl From<QueuedJob> for JobHandle {
   fn from(job: QueuedJob) -> Self {
     let id = job.id.clone();
@@ -150,10 +157,6 @@ impl From<QueuedJob> for JobHandle {
         });
         JobHandle { id, result }
       }
-      Job::CheckRoundCompletion { .. } => JobHandle {
-        id,
-        result: Some(WrappedJobResult::Success(JobResult::Nothing)),
-      },
       Job::CreateLobby { creator: _, result } => {
         let result = result.map(|res| match res {
           Ok(id) => WrappedJobResult::Success(JobResult::NewLobby { id }),
@@ -161,6 +164,7 @@ impl From<QueuedJob> for JobHandle {
         });
         JobHandle { id, result }
       }
+      Job::CheckRoundCompletion { .. } | Job::CleanupLobbyMembership { .. } => without_result(id),
     }
   }
 }

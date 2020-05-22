@@ -43,6 +43,13 @@ impl<'a> Context<'a> {
         debug!("passing create lobby job off to create lobby handler");
         handlers::lobbies::create_lobby(&job.id, &creator, &self.records).await
       }
+      Job::CleanupLobbyMembership { member_id, .. } => {
+        debug!(
+          "handling lobby membership cleanup for membership '{}'",
+          member_id
+        );
+        job.clone()
+      }
       Job::CreateGame {
         creator, lobby_id, ..
       } => {
