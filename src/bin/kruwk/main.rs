@@ -48,7 +48,7 @@ impl<'a> Context<'a> {
           "handling lobby membership cleanup for membership '{}'",
           member_id
         );
-        job.clone()
+        handlers::lobby_memberships::cleanup(&job.id, &member_id, &self.records).await
       }
       Job::CreateGame {
         creator, lobby_id, ..

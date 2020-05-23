@@ -19,7 +19,7 @@ const LOAD_ROUNDS: &'static str = include_str!("data-store/load-rounds.sql");
 const LOAD_ENTRIES: &'static str = include_str!("data-store/load-round-entries.sql");
 const LOAD_ROUND_DETAILS: &'static str = include_str!("data-store/load-round-details.sql");
 const GAME_FOR_ENTRY: &'static str = include_str!("data-store/game-for-entry-creation.sql");
-const CREATE_ENTRY: &'static str = include_str!("data-store/create-job-entry.sql");
+const CREATE_ENTRY: &'static str = include_str!("data-store/create-round-entry.sql");
 
 #[derive(Deserialize)]
 pub struct CreatePayload {
@@ -303,11 +303,12 @@ pub async fn create_entry<R: AsyncRead + Unpin>(
     .iter()
     .nth(0)
     .and_then(|row| {
-      let game_id = row.try_get::<_, String>(0).map_err(log_err).ok()?;
-      let round_id = row.try_get::<_, String>(1).map_err(log_err).ok()?;
-      let member_id = row.try_get::<_, String>(2).map_err(log_err).ok()?;
-      let user_id = row.try_get::<_, String>(3).map_err(log_err).ok()?;
-      Some((game_id, round_id, member_id, user_id))
+      let lobby_id = row.try_get::<_, String>(0).map_err(log_err).ok()?;
+      let game_id = row.try_get::<_, String>(1).map_err(log_err).ok()?;
+      let round_id = row.try_get::<_, String>(2).map_err(log_err).ok()?;
+      let member_id = row.try_get::<_, String>(3).map_err(log_err).ok()?;
+      let user_id = row.try_get::<_, String>(4).map_err(log_err).ok()?;
+      Some((lobby_id, game_id, round_id, member_id, user_id))
     }) {
     None => {
       warn!(
@@ -321,7 +322,16 @@ pub async fn create_entry<R: AsyncRead + Unpin>(
 
   let created = context
     .records()
-    .query(CREATE_ENTRY, &[&authority.1, &authority.2, &payload.entry])
+    .query(
+      CREATE_ENTRY,
+      &[
+        &authority.2,
+        &authority.3,
+        &payload.entry,
+        &authority.1,
+        &authority.0,
+      ],
+    )
     .map_err(log_err)?
     .iter()
     .nth(0)

@@ -1,4 +1,5 @@
 select
+  games.lobby_id,
   games.id,
   rounds.id,
   memberships.id,

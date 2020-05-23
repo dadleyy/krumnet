@@ -6,9 +6,9 @@ with new_game as (
   returning
     id
 ) insert into krumnet.game_rounds
-    (position, game_id, prompt, started_at)
+    (position, game_id, lobby_id, prompt, started_at)
   select
-    new_rounds.position, new_game.id, new_rounds.prompt, new_rounds.started_at
+    new_rounds.position, new_game.id, $1, new_rounds.prompt, new_rounds.started_at
   from
     (
       select
