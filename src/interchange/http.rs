@@ -16,11 +16,10 @@ pub struct GameRoundEntry {
   pub id: String,
   pub member_id: String,
   pub round_id: String,
-  pub entry: String,
+  pub entry: Option<String>,
   pub created: DateTime<Utc>,
   pub user_id: String,
   pub user_name: String,
-  pub user_email: String,
 }
 
 #[derive(Debug, Serialize)]

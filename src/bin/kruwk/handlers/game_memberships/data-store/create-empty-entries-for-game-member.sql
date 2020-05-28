@@ -1,6 +1,8 @@
 insert into
-  krumnet.game_round_entries (round_id, member_id, game_id, lobby_id, entry, auto)
+  krumnet.game_round_entries
+  (user_id, round_id, member_id, game_id, lobby_id, entry, auto)
 select
+  cast($1 as varchar),
   rounds.id,
   members.id,
   rounds.game_id,

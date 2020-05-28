@@ -22,7 +22,7 @@ pub fn count_members(round_id: &String, records: &RecordStore) -> Result<i64, St
         .nth(0)
         .ok_or(String::from("unable to find counts"))
     })
-    .and_then(|row| row.try_get::<_, i64>(0).map_err(warn_and_stringify))
+    .and_then(|row| row.try_get::<_, i64>(1).map_err(warn_and_stringify))
 }
 
 pub fn count_entries(round_id: &String, records: &RecordStore) -> Result<i64, String> {
@@ -35,7 +35,7 @@ pub fn count_entries(round_id: &String, records: &RecordStore) -> Result<i64, St
         .nth(0)
         .ok_or(String::from("unable to find counts"))
     })
-    .and_then(|row| row.try_get::<_, i64>(0).map_err(warn_and_stringify))
+    .and_then(|row| row.try_get::<_, i64>(1).map_err(warn_and_stringify))
 }
 
 pub async fn check_round_completion(

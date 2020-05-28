@@ -259,23 +259,25 @@ fn entries_for_round(
         let id = row.try_get::<_, String>(0).map_err(log_err).ok()?;
         let round_id = row.try_get::<_, String>(1).map_err(log_err).ok()?;
         let member_id = row.try_get::<_, String>(2).map_err(log_err).ok()?;
-        let entry = row.try_get::<_, String>(3).map_err(log_err).ok()?;
-        let created = row.try_get::<_, DateTime<Utc>>(4).map_err(log_err).ok()?;
-        let user_id = row.try_get::<_, String>(5).map_err(log_err).ok()?;
-        let user_name = String::from("");
-        let user_email = String::from("");
+        let created = row.try_get::<_, DateTime<Utc>>(3).map_err(log_err).ok()?;
+        let user_id = row.try_get::<_, String>(4).map_err(log_err).ok()?;
+        let user_name = row.try_get::<_, String>(5).map_err(log_err).ok()?;
+
+        let entry = match &user_id == uid {
+          true => Some(row.try_get::<_, String>(6).map_err(log_err).ok()?),
+          false => None,
+        };
 
         debug!("found round entry '{}'", id);
 
         Some(interchange::http::GameRoundEntry {
           id,
           round_id,
-          member_id,
           entry,
+          member_id,
           created,
           user_id,
           user_name,
-          user_email,
         })
       })
       .collect(),
