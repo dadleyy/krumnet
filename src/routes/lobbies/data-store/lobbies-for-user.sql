@@ -15,11 +15,22 @@ left join
 on
   games.lobby_id = lobbies.id
 where
-  memberships.user_id = $1
+  lobbies.id in (
+    select
+      lobby_id
+    from
+      krumnet.lobby_memberships as m
+    where
+      m.user_id = $1
+    and
+      m.left_at is null
+    and
+      m.joined_at is not null
+    limit 10
+  )
 and
   memberships.left_at is null
 group by
   lobbies.id, memberships.lobby_id
 order by
-  lobbies.created_at desc
-limit 10;
+  lobbies.created_at desc;

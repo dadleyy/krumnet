@@ -253,7 +253,7 @@ fn entries_for_round(
   Ok(Some(
     context
       .records()
-      .query(LOAD_ENTRIES, &[uid, round_id])?
+      .query(LOAD_ENTRIES, &[round_id])?
       .iter()
       .filter_map(|row| {
         let id = row.try_get::<_, String>(0).map_err(log_err).ok()?;
@@ -262,9 +262,11 @@ fn entries_for_round(
         let entry = row.try_get::<_, String>(3).map_err(log_err).ok()?;
         let created = row.try_get::<_, DateTime<Utc>>(4).map_err(log_err).ok()?;
         let user_id = row.try_get::<_, String>(5).map_err(log_err).ok()?;
-        let user_name = row.try_get::<_, String>(6).map_err(log_err).ok()?;
-        let user_email = row.try_get::<_, String>(7).map_err(log_err).ok()?;
+        let user_name = String::from("");
+        let user_email = String::from("");
+
         debug!("found round entry '{}'", id);
+
         Some(interchange::http::GameRoundEntry {
           id,
           round_id,
@@ -325,11 +327,12 @@ pub async fn create_entry<R: AsyncRead + Unpin>(
     .query(
       CREATE_ENTRY,
       &[
-        &authority.2,
-        &authority.3,
-        &payload.entry,
-        &authority.1,
-        &authority.0,
+        &authority.2,   // round_id
+        &authority.3,   // member_id
+        &payload.entry, // entry
+        &authority.1,   // game_id
+        &authority.0,   // lobby_id
+        &authority.4,   // user_id
       ],
     )
     .map_err(log_err)?

@@ -50,7 +50,8 @@ create table krumnet.lobby_memberships (
   invited_by varchar references krumnet.users(id),
   permissions bit(10) not null,
   joined_at timestamp with time zone,
-  left_at timestamp with time zone
+  left_at timestamp with time zone,
+  constraint single_membership unique (user_id, lobby_id)
 );
 
 drop table if exists krumnet.games cascade;
@@ -117,9 +118,11 @@ create table krumnet.game_round_entries (
   id varchar unique default uuid_generate_v4() PRIMARY KEY,
   round_id varchar references krumnet.game_rounds(id) not null,
   member_id varchar references krumnet.game_memberships(id) not null,
+  user_id varchar references krumnet.users(id) not null,
   game_id varchar references krumnet.games(id) not null,
   lobby_id varchar references krumnet.lobbies(id) not null,
   entry varchar,
+  auto boolean default false,
   created_at timestamp with time zone default now(),
   UNIQUE (round_id, member_id)
 );

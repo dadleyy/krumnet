@@ -189,7 +189,7 @@ impl ContextBuilder {
 #[cfg(test)]
 mod test_helpers {
   use super::Context;
-  use crate::configuration::test_helpers::load_config;
+  use crate::configuration::load_test_config as load_config;
   use crate::{Authority, JobStore, RecordStore, SessionStore};
   use async_std::task::block_on;
   use std::sync::Arc;

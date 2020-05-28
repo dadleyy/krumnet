@@ -5,4 +5,6 @@ select
 from
   krumnet.lobby_memberships as m
 where
-  m.lobby_id = $2;
+  m.lobby_id = $2
+and
+  m.left_at is null;

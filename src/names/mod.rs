@@ -29,7 +29,8 @@ pub fn get() -> String {
   let buff = iter::repeat(())
     .map(|()| rng.sample(Alphanumeric))
     .take(5)
-    .collect::<String>();
+    .collect::<String>()
+    .to_lowercase();
 
   format!("{}-{}-{}", ajective, name, buff)
 }

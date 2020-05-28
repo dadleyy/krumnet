@@ -111,6 +111,9 @@ where
     }
     (RequestMethod::POST, "/lobbies") => routes::lobbies::create(&ctx, &mut connection).await,
 
+    (RequestMethod::POST, "/lobby-memberships") => {
+      routes::lobby_memberships::create_membership(&ctx, &mut connection).await
+    }
     (RequestMethod::DELETE, "/lobby-memberships") => {
       routes::lobby_memberships::destroy_membership(&ctx, &mut connection).await
     }

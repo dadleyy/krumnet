@@ -4,6 +4,14 @@ use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub struct NewLobbyMembership {
+  pub member_id: String,
+  pub user_id: String,
+  pub lobby_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub struct GameRoundEntry {
   pub id: String,
   pub member_id: String,
@@ -164,7 +172,9 @@ impl From<QueuedJob> for JobHandle {
         });
         JobHandle { id, result }
       }
-      Job::CheckRoundCompletion { .. } | Job::CleanupLobbyMembership { .. } => without_result(id),
+      Job::CheckRoundCompletion { .. }
+      | Job::CleanupLobbyMembership { .. }
+      | Job::CleanupGameMembership { .. } => without_result(id),
     }
   }
 }

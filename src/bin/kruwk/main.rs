@@ -8,7 +8,10 @@ use krumnet::{
   Configuration, JobStore, RecordStore,
 };
 
+mod context;
 mod handlers;
+
+pub use context::Context;
 
 const MAX_WORKER_FAILS: u8 = 10;
 
@@ -21,41 +24,46 @@ struct Options {
   help: bool,
 }
 
-struct Context<'a> {
-  records: &'a RecordStore,
-}
-
-impl<'a> Context<'a> {
-  pub async fn execute(&self, job: &QueuedJob) -> QueuedJob {
-    match &job.job {
-      Job::CheckRoundCompletion { round_id, .. } => {
-        debug!("received round completion check job - '{}'", round_id);
-        let result = Some(handlers::games::check_round_completion(round_id, &self.records).await);
-        QueuedJob {
-          id: job.id.clone(),
-          job: Job::CheckRoundCompletion {
-            round_id: round_id.clone(),
-            result,
-          },
-        }
+async fn execute<'a>(ctx: &Context<'a>, job: &QueuedJob) -> QueuedJob {
+  match &job.job {
+    Job::CheckRoundCompletion { round_id, .. } => {
+      debug!("received round completion check job - '{}'", round_id);
+      let result = Some(handlers::games::check_round_completion(round_id, &ctx.records).await);
+      QueuedJob {
+        id: job.id.clone(),
+        job: Job::CheckRoundCompletion {
+          round_id: round_id.clone(),
+          result,
+        },
       }
-      Job::CreateLobby { creator, .. } => {
-        debug!("passing create lobby job off to create lobby handler");
-        handlers::lobbies::create_lobby(&job.id, &creator, &self.records).await
+    }
+    Job::CreateLobby { creator, .. } => {
+      debug!("passing create lobby job off to create lobby handler");
+      handlers::lobbies::create_lobby(&job.id, &creator, &ctx.records).await
+    }
+    Job::CleanupLobbyMembership {
+      member_id,
+      lobby_id,
+      ..
+    } => {
+      debug!(
+        "handling lobby membership cleanup for membership '{}'",
+        member_id
+      );
+      handlers::lobby_memberships::cleanup(&job.id, &member_id, &lobby_id, &ctx).await
+    }
+    Job::CleanupGameMembership(details) => {
+      debug!("handler cleaning up game membership {}", details.member_id);
+      QueuedJob {
+        id: job.id.clone(),
+        job: handlers::game_memberships::cleanup(&details, &ctx).await,
       }
-      Job::CleanupLobbyMembership { member_id, .. } => {
-        debug!(
-          "handling lobby membership cleanup for membership '{}'",
-          member_id
-        );
-        handlers::lobby_memberships::cleanup(&job.id, &member_id, &self.records).await
-      }
-      Job::CreateGame {
-        creator, lobby_id, ..
-      } => {
-        debug!("passing create game off to handler");
-        handlers::lobbies::create_game(&job.id, &creator, &lobby_id, &self.records).await
-      }
+    }
+    Job::CreateGame {
+      creator, lobby_id, ..
+    } => {
+      debug!("passing create game off to handler");
+      handlers::lobbies::create_game(&job.id, &creator, &lobby_id, &ctx.records).await
     }
   }
 }
@@ -73,7 +81,10 @@ fn main() -> Result<()> {
     debug!("starting worker process, opening job store");
     let jobs = JobStore::open(&opts.config).await?;
     let records = RecordStore::open(&opts.config).await?;
-    let ctx = Context { records: &records };
+    let ctx = Context {
+      records: &records,
+      jobs: &jobs,
+    };
     let mut fails = 0;
     debug!("job store successfully opened, starting dequeue");
 
@@ -83,7 +94,7 @@ fn main() -> Result<()> {
       match next {
         Ok(Some(job)) => {
           info!("pulled next job off queue - {:?}", job.id);
-          let next = ctx.execute(&job).await;
+          let next = execute(&ctx, &job).await;
           if let Err(e) = jobs.update(&job.id, &next).await {
             warn!("unable to update job - {}", e);
           }

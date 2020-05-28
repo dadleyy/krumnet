@@ -20,12 +20,12 @@ struct UserInfo {
   email: String,
 }
 
-const FIND_USER: &'static str = include_str!("../data-store/find-user-by-id.sql");
-const CREATE_LOBBY: &'static str = include_str!("../data-store/create-lobby.sql");
-const LOAD_LOBBY_DETAILS: &'static str = include_str!("../data-store/load-lobby-details-by-id.sql");
-const CREATE_GAME_FOR_LOBBY: &'static str = include_str!("../data-store/create-game-for-lobby.sql");
+const FIND_USER: &'static str = include_str!("./data-store/find-user-by-id.sql");
+const CREATE_LOBBY: &'static str = include_str!("./data-store/create-lobby.sql");
+const LOAD_LOBBY_DETAILS: &'static str = include_str!("./data-store/load-lobby-details-by-id.sql");
+const CREATE_GAME_FOR_LOBBY: &'static str = include_str!("./data-store/create-game-for-lobby.sql");
 const CREATE_MEMBERSHIPS_FOR_GAME: &'static str =
-  include_str!("../data-store/create-game-members.sql");
+  include_str!("./data-store/create-game-members.sql");
 
 fn make_lobby(
   records: &RecordStore,

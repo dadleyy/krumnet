@@ -2,6 +2,16 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct CleanupGameMembershipContext {
+  pub user_id: String,
+  pub member_id: String,
+  pub lobby_id: String,
+  pub game_id: String,
+  pub result: Option<Result<String, String>>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "snake_case", tag = "t", content = "c")]
 pub enum Job {
   CreateLobby {
@@ -17,8 +27,10 @@ pub enum Job {
     round_id: String,
     result: Option<Result<u8, String>>,
   },
+  CleanupGameMembership(CleanupGameMembershipContext),
   CleanupLobbyMembership {
     member_id: String,
+    lobby_id: String,
     result: Option<Result<String, String>>,
   },
 }
@@ -51,8 +63,9 @@ impl QueuedJob {
     match &self.job {
       Job::CreateLobby { creator, result: _ } => Some(creator.clone()),
       Job::CreateGame { creator, .. } => Some(creator.clone()),
-      Job::CheckRoundCompletion { .. } => None,
-      Job::CleanupLobbyMembership { .. } => None,
+      Job::CheckRoundCompletion { .. }
+      | Job::CleanupLobbyMembership { .. }
+      | Job::CleanupGameMembership { .. } => None,
     }
   }
 }
