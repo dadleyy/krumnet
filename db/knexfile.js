@@ -21,7 +21,7 @@ module.exports = async function() {
 
   const config = JSON.parse(configData.toString("utf8"));
   const connection = parsePostgresString(config["record_store"]["postgres_uri"]);
-  log("loaded config - '%s'", connection);
+  log("loaded config - '%j'", connection);
 
   return {
     client: "pg",
