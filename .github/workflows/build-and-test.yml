@@ -31,8 +31,8 @@ jobs:
       - name: Migrate DB
         run: cd db && npm run migrate:up
         env:
-          DEBUG: *
-          KRUMNET_TEST_CONFIG_FILE: ../ci/github-actions/krumnet-config.json
+          DEBUG: '*'
+          KRUMNET_TEST_CONFIG_FILE: '../ci/github-actions/krumnet-config.json'
           PGPASSWORD: postgres
       - name: Rustup install beta
         run: rustup toolchain install beta
