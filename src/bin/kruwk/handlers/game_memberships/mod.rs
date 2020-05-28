@@ -32,7 +32,7 @@ pub async fn cleanup_inner(
   round_ids.dedup();
 
   for id in &round_ids {
-    let job = interchange::jobs::Job::CheckRoundCompletion {
+    let job = interchange::jobs::Job::CheckRoundFulfillment {
       round_id: id.clone(),
       result: None,
     };

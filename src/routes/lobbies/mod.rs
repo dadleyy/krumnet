@@ -9,7 +9,11 @@ use serde::Deserialize;
 use serde_json::from_slice as deserialize;
 
 use crate::{
-  errors, http::Uri, interchange, read_size_async, records::Row, Authority, Context, Response,
+  errors,
+  http::{query_values, Uri},
+  interchange, read_size_async,
+  records::Row,
+  Authority, Context, Response,
 };
 
 pub const LOAD_LOBBY_DETAILS: &'static str = include_str!("./data-store/load-lobby-detail.sql");
@@ -68,12 +72,11 @@ pub fn load_members(context: &Context, id: &String) -> Result<Vec<interchange::h
   Ok(rows.iter().filter_map(parse_member_row).collect())
 }
 
-pub async fn details(context: &Context, uri: &Uri) -> Result<Response> {
+pub async fn details(context: &Context, id: &String) -> Result<Response> {
   let uid = match context.authority() {
     Authority::User { id: s, token: _ } => s,
     _ => return Ok(Response::not_found().cors(context.cors())),
   };
-  let id = uri.path().trim_start_matches("/lobbies/");
 
   debug!("looking for loby via '{}' for user '{}'", id, uid);
 
@@ -117,11 +120,20 @@ pub async fn details(context: &Context, uri: &Uri) -> Result<Response> {
     .unwrap_or_else(|| Ok(Response::not_found().cors(context.cors())))
 }
 
-pub async fn find(context: &Context, _uri: &Uri) -> Result<Response> {
+pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
   let uid = match context.authority() {
     Authority::User { id, .. } => id,
     Authority::None => return Ok(Response::not_found().cors(context.cors())),
   };
+
+  let ids = query_values(uri, "ids[]");
+
+  if ids.len() == 1 {
+    let lobby_id = ids.into_iter().nth(0).unwrap_or_default();
+    debug!("loading single lobby for user '{}'", uid);
+    return details(context, &lobby_id).await;
+  }
+
   debug!("loading lobbies for user '{}'", uid);
 
   let lobbies = context

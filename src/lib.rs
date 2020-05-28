@@ -101,14 +101,7 @@ where
       .unwrap_or_else(|| task::block_on(async { routes::jobs::find(&ctx, &uri).await })),
 
     // Lobbies
-    (RequestMethod::GET, "/lobbies") => {
-      debug!("attempting to search all lobbies");
-      routes::lobbies::find(&ctx, &uri).await
-    }
-    (RequestMethod::GET, path) if path.starts_with("/lobbies") => {
-      debug!("attempting lookup for specific lobby");
-      routes::lobbies::details(&ctx, &uri).await
-    }
+    (RequestMethod::GET, "/lobbies") => routes::lobbies::find(&ctx, &uri).await,
     (RequestMethod::POST, "/lobbies") => routes::lobbies::create(&ctx, &mut connection).await,
 
     (RequestMethod::POST, "/lobby-memberships") => {
@@ -120,11 +113,12 @@ where
 
     (RequestMethod::POST, "/games") => routes::games::create(&ctx, &mut connection).await,
     (RequestMethod::GET, "/games") => routes::games::find(&ctx, &uri).await,
-    (RequestMethod::GET, "/round-entries") => routes::games::entries(&ctx, &uri).await,
+
+    (RequestMethod::GET, "/rounds") => routes::rounds::find(&ctx, &uri).await,
+
     (RequestMethod::POST, "/round-entries") => {
       routes::games::create_entry(&ctx, &mut connection).await
     }
-    (RequestMethod::GET, "/rounds") => routes::games::rounds(&ctx, &uri).await,
 
     _ => {
       debug!("not-found - '{}'", path);

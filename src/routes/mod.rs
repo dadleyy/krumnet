@@ -5,6 +5,7 @@ pub mod games;
 pub mod jobs;
 pub mod lobbies;
 pub mod lobby_memberships;
+pub mod rounds;
 
 use crate::http::{query as qs, Uri};
 use crate::interchange::http::{SessionData, SessionUserData};

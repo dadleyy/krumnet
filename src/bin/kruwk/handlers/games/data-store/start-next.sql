@@ -1,10 +1,10 @@
 update
-  krumnet.game_rounds
+  krumnet.game_rounds as rounds
 set
   started_at = now()
 where
-  krumnet.game_rounds.game_id = $1
+  rounds.game_id = $1
 and
-  krumnet.game_rounds.position = $2 + 1
+  rounds.position = $2 + 1
 returning
   id;

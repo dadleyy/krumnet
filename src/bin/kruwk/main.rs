@@ -26,12 +26,12 @@ struct Options {
 
 async fn execute<'a>(ctx: &Context<'a>, job: &QueuedJob) -> QueuedJob {
   match &job.job {
-    Job::CheckRoundCompletion { round_id, .. } => {
-      debug!("received round completion check job - '{}'", round_id);
-      let result = Some(handlers::games::check_round_completion(round_id, &ctx.records).await);
+    Job::CheckRoundFulfillment { round_id, .. } => {
+      debug!("received round fulfillment check job - '{}'", round_id);
+      let result = Some(handlers::games::check_round_fullfillment(round_id, &ctx.records).await);
       QueuedJob {
         id: job.id.clone(),
-        job: Job::CheckRoundCompletion {
+        job: Job::CheckRoundFulfillment {
           round_id: round_id.clone(),
           result,
         },

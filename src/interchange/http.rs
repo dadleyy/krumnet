@@ -17,6 +17,7 @@ pub struct GameRoundEntry {
   pub member_id: String,
   pub round_id: String,
   pub entry: Option<String>,
+  #[serde(with = "chrono::serde::ts_milliseconds")]
   pub created: DateTime<Utc>,
   pub user_id: String,
   pub user_name: String,
@@ -35,6 +36,8 @@ pub struct GameRoundDetails {
   pub created: DateTime<Utc>,
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
   pub completed: Option<DateTime<Utc>>,
+  #[serde(with = "chrono::serde::ts_milliseconds_option")]
+  pub fulfilled: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -77,6 +80,8 @@ pub struct GameRound {
   pub created: DateTime<Utc>,
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
   pub completed: Option<DateTime<Utc>>,
+  #[serde(with = "chrono::serde::ts_milliseconds_option")]
+  pub fulfilled: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -171,7 +176,7 @@ impl From<QueuedJob> for JobHandle {
         });
         JobHandle { id, result }
       }
-      Job::CheckRoundCompletion { .. }
+      Job::CheckRoundFulfillment { .. }
       | Job::CleanupLobbyMembership { .. }
       | Job::CleanupGameMembership { .. } => without_result(id),
     }

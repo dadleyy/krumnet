@@ -38,11 +38,11 @@ pub fn count_entries(round_id: &String, records: &RecordStore) -> Result<i64, St
     .and_then(|row| row.try_get::<_, i64>(1).map_err(warn_and_stringify))
 }
 
-pub async fn check_round_completion(
+pub async fn check_round_fullfillment(
   round_id: &String,
   records: &RecordStore,
 ) -> Result<u8, String> {
-  info!("checking completion of round '{}'", round_id);
+  info!("checking fullfillment of round '{}'", round_id);
 
   let entry_count = count_entries(round_id, records)?;
   let member_count = count_members(round_id, records)?;
@@ -73,23 +73,16 @@ pub async fn check_round_completion(
 
   debug!("updated position {} in game '{}'", position, game_id);
 
-  let rows = records
+  records
     .query(START_NEXT, &[&game_id, &position])
     .map_err(warn_and_stringify)?;
-
-  if let None = rows.iter().nth(0) {
-    info!("no next round found, closing game '{}'", game_id);
-    records
-      .query(END_GAME, &[&game_id])
-      .map_err(warn_and_stringify)?;
-  }
 
   Ok(diff)
 }
 
 #[cfg(test)]
 mod test {
-  use super::check_round_completion;
+  use super::check_round_fullfillment;
   use async_std::task::block_on;
   use krumnet::{Configuration, RecordStore};
   use std::env;
@@ -115,7 +108,7 @@ mod test {
   fn test_not_found() {
     let records = get_records();
     let id = String::from("not-valid");
-    let res = block_on(async { check_round_completion(&id, &records).await });
+    let res = block_on(async { check_round_fullfillment(&id, &records).await });
     assert!(res.is_err());
     assert_eq!(format!("{}", res.unwrap_err()), "unable to find counts");
   }
