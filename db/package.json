@@ -1,0 +1,18 @@
+{
+  "name": "krudb",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "migrate:list": "knex migrate:list",
+    "migrate:make": "knex migrate:make",
+    "migrate:up": "knex migrate:up",
+    "migrate:down": "knex migrate:down"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "debug": "^4.1.1",
+    "knex": "^0.21.1",
+    "pg": "^8.2.1"
+  }
+}

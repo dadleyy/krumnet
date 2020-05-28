@@ -25,10 +25,13 @@ jobs:
       - name: Apt update
         run: apt-get update
       - name: Install postgres client
-        run: apt-get install -y postgresql-client libpq-dev
-      - name: Setup DB
-        run: psql -f db/structure.sql --user postgres --host postgres --port 5432 postgres
+        run: apt-get install -y postgresql-client libpq-dev nodejs npm
+      - name: Prepare knex
+        run: cd db && npm i
+      - name: Migrate DB
+        run: cd db && npm run migrate:up
         env:
+          KRUMNET_TEST_CONFIG_FILE: ../ci/github-actions/krumnet-config.json
           PGPASSWORD: postgres
       - name: Rustup install beta
         run: rustup toolchain install beta
