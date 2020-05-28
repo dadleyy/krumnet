@@ -6,7 +6,9 @@
     "migrate:list": "knex migrate:list",
     "migrate:make": "knex migrate:make",
     "migrate:up": "knex migrate:up",
-    "migrate:down": "knex migrate:down"
+    "migrate:down": "knex migrate:down",
+    "seed:make": "knex seed:make",
+    "seed:run": "knex seed:run"
   },
   "author": "",
   "license": "ISC",

@@ -34,6 +34,12 @@ jobs:
           DEBUG: '*'
           KRUMNET_TEST_CONFIG_FILE: '../ci/github-actions/krumnet-config.json'
           PGPASSWORD: postgres
+      - name: Seed DB
+        run: cd db && npm run seed:run
+        env:
+          DEBUG: '*'
+          KRUMNET_TEST_CONFIG_FILE: '../ci/github-actions/krumnet-config.json'
+          PGPASSWORD: postgres
       - name: Rustup install beta
         run: rustup toolchain install beta
       - name: Rustup use beta
