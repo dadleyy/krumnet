@@ -24,13 +24,14 @@ jobs:
       - uses: actions/checkout@v1
       - name: Apt update
         run: apt-get update
-      - name: Install postgres client
+      - name: Install packages
         run: apt-get install -y postgresql-client libpq-dev nodejs npm
       - name: Prepare knex
         run: cd db && npm i
       - name: Migrate DB
         run: cd db && npm run migrate:up
         env:
+          DEBUG: *
           KRUMNET_TEST_CONFIG_FILE: ../ci/github-actions/krumnet-config.json
           PGPASSWORD: postgres
       - name: Rustup install beta

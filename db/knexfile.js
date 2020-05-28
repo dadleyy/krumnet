@@ -16,7 +16,9 @@ function parsePostgresString(input) {
 
 module.exports = async function() {
   const configFile = process.env["KRUMNET_TEST_CONFIG_FILE"] || path.resolve(__dirname, "../krumnet-config.json");
-  const configData = await fs.promises.readFile("../krumnet-config.json");
+  log("attempting to load '%s'", configFile);
+  const configData = await fs.promises.readFile(configFile);
+
   const config = JSON.parse(configData.toString("utf8"));
   const connection = parsePostgresString(config["record_store"]["postgres_uri"]);
   log("loaded config - '%s'", connection);
