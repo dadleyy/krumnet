@@ -7,5 +7,5 @@ where
 and
   memberships.user_id = $2
 returning
-  memberships.id,
-  memberships.lobby_id;
+  memberships.id       as member_id,
+  memberships.lobby_id as lobby_id;

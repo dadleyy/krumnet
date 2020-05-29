@@ -80,8 +80,11 @@ fn entries_for_round(
         .map_err(log_err)?;
       let user_id = row.try_get("user_id").map_err(log_err)?;
       let user_name = row.try_get("user_name").map_err(log_err)?;
+      let fulfilled = row
+        .try_get::<_, Option<DateTime<Utc>>>("fulfilled")
+        .map_err(log_err)?;
 
-      let entry = match &user_id == active_user_id {
+      let entry = match (&user_id == active_user_id) || fulfilled.is_some() {
         true => Some(row.try_get("entry").map_err(log_err)?),
         false => None,
       };

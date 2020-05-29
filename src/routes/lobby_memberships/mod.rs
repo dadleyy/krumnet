@@ -80,27 +80,38 @@ where
     Authority::None => return Ok(Response::not_found().cors(context.cors())),
     Authority::User { id, .. } => id,
   };
+
   let contents = read_size_async(reader, context.pending()).await?;
   let payload = deserialize::<DestroyMembershipPayload>(&contents)?;
+
   debug!(
     "attempting to delete membership for user '{}', lobby '{}'",
     uid, payload.lobby_id
   );
 
-  let rows = context
+  let result = context
     .records()
-    .query(LEAVE_LOBBY, &[&payload.lobby_id, &uid])?;
-
-  let (member_id, lobby_id) = rows
-    .iter()
+    .query(LEAVE_LOBBY, &[&payload.lobby_id, &uid])?
+    .into_iter()
     .nth(0)
-    .and_then(|row| {
-      Some((
-        row.try_get::<_, String>(0).ok()?,
-        row.try_get::<_, String>(1).ok()?,
-      ))
-    })
-    .unwrap_or_default();
+    .map(|row| {
+      let member_id = row
+        .try_get::<_, String>("member_id")
+        .map_err(errors::humanize_error)?;
+      let lobby_id = row
+        .try_get::<_, String>("lobby_id")
+        .map_err(errors::humanize_error)?;
+      Ok((member_id, lobby_id)) as Result<(String, String)>
+    });
+
+  let (member_id, lobby_id) = match result {
+    None => return Ok(Response::not_found().cors(context.cors())),
+    Some(Err(e)) => {
+      warn!("unable to leave lobby - {}", e);
+      return Ok(Response::not_found().cors(context.cors()));
+    }
+    Some(Ok(details)) => details,
+  };
 
   if member_id.len() == 0 {
     warn!(
@@ -110,7 +121,8 @@ where
     return Ok(Response::not_found().cors(context.cors()));
   }
 
-  info!("mebership '{}' is left", member_id);
+  info!("membership '{}' is left", member_id);
+
   context
     .jobs()
     .queue(&interchange::jobs::Job::CleanupLobbyMembership {

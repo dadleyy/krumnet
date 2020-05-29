@@ -17,7 +17,7 @@ const MAX_WORKER_FAILS: u8 = 10;
 
 #[derive(Debug, Gumdrop)]
 struct Options {
-  #[options(help = "configuration json file")]
+  #[options(help = "configuration json file", default = "krumnet-config.json")]
   config: Configuration,
 
   #[options(help = "display the help text")]

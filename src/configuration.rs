@@ -1,13 +1,11 @@
 extern crate serde;
 
-use log::{info, warn};
+use log::warn;
 use serde::Deserialize;
 use std::env::var_os;
 use std::fs::read;
 use std::io::{Error, ErrorKind};
 use std::str::FromStr;
-
-const DEFAULT_CONFIG_FILE: &'static str = "krumnet-config.json";
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Configuration {
@@ -38,22 +36,16 @@ impl Configuration {
 
 impl Default for Configuration {
   fn default() -> Self {
-    DEFAULT_CONFIG_FILE.parse::<Self>().unwrap_or_else(|err| {
-      warn!(
-        "unable to load default config file '{}' - {}",
-        DEFAULT_CONFIG_FILE, err
-      );
-      let google = GoogleCredentials::default();
-      let krumi = KrumiConfiguration::default();
-      Configuration {
-        google,
-        krumi,
-        addr: String::from("0.0.0.0:8080"),
-        session_store: SessionStoreConfiguration::default(),
-        record_store: RecordStoreConfiguration::default(),
-        job_store: JobStoreConfiguration::default(),
-      }
-    })
+    let google = GoogleCredentials::default();
+    let krumi = KrumiConfiguration::default();
+    Configuration {
+      google,
+      krumi,
+      addr: String::from("0.0.0.0:8080"),
+      session_store: SessionStoreConfiguration::default(),
+      record_store: RecordStoreConfiguration::default(),
+      job_store: JobStoreConfiguration::default(),
+    }
   }
 }
 
@@ -61,17 +53,15 @@ impl FromStr for Configuration {
   type Err = Error;
 
   fn from_str(source: &str) -> Result<Self, Self::Err> {
-    let result = serde_json::from_str::<Configuration>(
-      String::from_utf8(read(source)?)
-        .or(Err(Error::from(ErrorKind::InvalidData)))?
-        .as_str(),
-    );
+    let buffer = read(source).and_then(|buffer| {
+      String::from_utf8(buffer).map_err(|err| Error::new(ErrorKind::Other, err))
+    })?;
+    let result = serde_json::from_str::<Configuration>(buffer.as_str());
 
-    if let Err(e) = &result {
-      info!("[warning] unable to parse '{}': {:?}", source, e);
-    }
-
-    result.or(Err(Error::from(ErrorKind::InvalidData)))
+    result.map_err(|err| {
+      warn!("unable to parse '{}': {:?}", source, err);
+      Error::new(ErrorKind::Other, err)
+    })
   }
 }
 

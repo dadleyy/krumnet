@@ -97,8 +97,7 @@ where
     }
 
     // Jobs
-    (RequestMethod::GET, "/jobs") => routes::ensure_authorized(&ctx)
-      .unwrap_or_else(|| task::block_on(async { routes::jobs::find(&ctx, &uri).await })),
+    (RequestMethod::GET, "/jobs") => routes::jobs::find(&ctx, &uri).await,
 
     // Lobbies
     (RequestMethod::GET, "/lobbies") => routes::lobbies::find(&ctx, &uri).await,

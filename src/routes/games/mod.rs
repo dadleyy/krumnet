@@ -87,7 +87,7 @@ pub async fn create_entry<R: AsyncRead + Unpin>(
 
   match created {
     Some((_entry_id, entry, round_id)) => {
-      warn!("successfully created entry - {:?}", entry);
+      debug!("successfully created entry - {:?}", entry);
 
       context
         .jobs()

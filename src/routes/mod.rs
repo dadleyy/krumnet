@@ -21,13 +21,6 @@ pub fn parse_user_session_query(row: Row) -> Option<SessionUserData> {
   Some(SessionUserData { id, email, name })
 }
 
-pub fn ensure_authorized(context: &Context) -> Option<Result<Response>> {
-  match context.authority() {
-    Authority::None => Some(Ok(Response::not_found().cors(context.cors()))),
-    _ => None,
-  }
-}
-
 pub async fn destroy(context: &Context, uri: &Uri) -> Result<Response> {
   let token = match context.authority() {
     Authority::User { id: _, token } => Some(token.clone()),
