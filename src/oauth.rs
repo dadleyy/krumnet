@@ -114,7 +114,7 @@ fn make_user(details: &UserInfoPayload, context: &Context) -> Result<String> {
   let tenant = context.records().query(FIND_USER, &[&sub])?;
 
   match tenant.iter().nth(0) {
-    Some(row) => match row.try_get::<_, String>(0) {
+    Some(row) => match row.try_get::<_, String>("user_id") {
       Ok(id) => Ok(id),
       _ => Err(Error::new(
         ErrorKind::Other,
@@ -137,7 +137,7 @@ fn find_or_create_user(profile: &UserInfoPayload, context: &Context) -> Result<S
   info!("loaded user info: {:?}", profile);
 
   match tenant.iter().nth(0) {
-    Some(row) => match row.try_get::<_, String>(0) {
+    Some(row) => match row.try_get::<_, String>("user_id") {
       Ok(id) => {
         info!("found existing user {}", id);
         Ok(id)

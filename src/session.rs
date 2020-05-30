@@ -1,5 +1,5 @@
 use std::io::{Error, ErrorKind};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use async_std::net::TcpStream;
 use async_std::sync::RwLock;
@@ -30,6 +30,7 @@ pub struct Session {
   _secret: String,
   _encoding_key: EncodingKey,
   _session_prefix: String,
+  _expiration_timeout: Option<Duration>,
 }
 
 impl Session {
@@ -49,6 +50,10 @@ impl Session {
       _stream: RwLock::new(stream),
       _session_prefix: configuration.session_store.session_prefix.clone(),
       _secret: configuration.session_store.secret.clone(),
+      _expiration_timeout: configuration
+        .session_store
+        .expiration_timeout
+        .map(|secs| Duration::from_secs(secs)),
       _encoding_key: key,
     })
   }
@@ -100,10 +105,17 @@ impl Session {
       .map_err(|e| Error::new(ErrorKind::Other, e))?;
 
     let key = format!("{}:{}", self._session_prefix, token);
-    let insert = StringCommand::Set(Arity::One((&key, &id)), None, Insertion::Always);
+    let insert = StringCommand::Set(
+      Arity::One((&key, &id)),
+      self._expiration_timeout,
+      Insertion::Always,
+    );
     let mut stream = self._stream.write().await;
     execute(&mut (*stream), insert).await?;
-    info!("creating session for user id: {}", id);
+    info!(
+      "creating session for user id: {} (timeout: {:?})",
+      id, self._expiration_timeout
+    );
     Ok(token)
   }
 }

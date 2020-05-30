@@ -15,9 +15,9 @@ use crate::{Authority, Context, Response};
 const USER_FOR_SESSION: &'static str = include_str!("../data-store/load-user-for-session.sql");
 
 pub fn parse_user_session_query(row: Row) -> Option<SessionUserData> {
-  let id = row.try_get(0).ok()?;
-  let name = row.try_get(1).ok()?;
-  let email = row.try_get(2).ok()?;
+  let id = row.try_get("user_id").ok()?;
+  let name = row.try_get("user_name").ok()?;
+  let email = row.try_get("user_email").ok()?;
   Some(SessionUserData { id, email, name })
 }
 

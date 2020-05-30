@@ -1,9 +1,9 @@
 select
-  games.lobby_id,
-  games.id,
-  rounds.id,
-  memberships.id,
-  memberships.user_id
+  games.lobby_id      as lobby_id,
+  games.id            as game_id,
+  rounds.id           as round_id,
+  memberships.id      as member_id,
+  memberships.user_id as user_id
 from
   krumnet.game_memberships as memberships
 inner join

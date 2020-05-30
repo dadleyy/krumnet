@@ -115,6 +115,10 @@ where
 
     (RequestMethod::GET, "/rounds") => routes::rounds::find(&ctx, &uri).await,
 
+    (RequestMethod::POST, "/round-entry-votes") => {
+      routes::games::create_entry_vote(&ctx, &mut connection).await
+    }
+
     (RequestMethod::POST, "/round-entries") => {
       routes::games::create_entry(&ctx, &mut connection).await
     }

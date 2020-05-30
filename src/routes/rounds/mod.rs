@@ -10,6 +10,7 @@ use crate::{
 
 const LOAD_ROUND_DETAILS: &'static str = include_str!("data-store/load-round-details.sql");
 const LOAD_ENTRIES: &'static str = include_str!("data-store/load-round-entries.sql");
+const LOAD_RESULTS: &'static str = include_str!("data-store/load-round-results.sql");
 
 fn log_err<E: std::error::Error>(error: E) -> Error {
   warn!("error - {}", error);
@@ -48,9 +49,12 @@ pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
 
       debug!("found round row '{}', parsing into response", id);
       let entries = entries_for_round(context, &uid, &id)?;
+      let results = results_for_round(context, &id)?;
+
       let details = interchange::http::GameRoundDetails {
         id,
         entries,
+        results,
         position,
         fulfilled,
         prompt,
@@ -60,6 +64,29 @@ pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
       };
       Response::ok_json(details).map(|res| res.cors(context.cors()))
     })
+}
+
+fn results_for_round(
+  context: &Context,
+  round_id: &String,
+) -> Result<Vec<interchange::http::GameRoundPlacement>> {
+  context
+    .records()
+    .query(LOAD_RESULTS, &[round_id])?
+    .into_iter()
+    .map(|row| {
+      let id = row.try_get("result_id").map_err(log_err)?;
+      let user_name = row.try_get("user_name").map_err(log_err)?;
+      let user_id = row.try_get("user_id").map_err(log_err)?;
+      let place = row.try_get("round_place").map_err(log_err)?;
+      Ok(interchange::http::GameRoundPlacement {
+        id,
+        user_name,
+        user_id,
+        place,
+      })
+    })
+    .collect()
 }
 
 fn entries_for_round(

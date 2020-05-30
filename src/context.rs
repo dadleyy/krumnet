@@ -78,10 +78,12 @@ pub async fn load_authorization(
     .iter()
     .nth(0)
     .and_then(|row| {
-      let id = row.try_get::<_, String>(0).ok()?;
-      let name = row.try_get::<_, String>(1).ok()?;
-      let email = row.try_get::<_, String>(2).ok()?;
+      let id = row.try_get("user_id").ok()?;
+      let name = row.try_get::<_, String>("user_name").ok()?;
+      let email = row.try_get::<_, String>("user_email").ok()?;
+
       info!("found user '{:?}' {:?} {:?}", id, name, email);
+
       Some(Authority::User {
         id,
         token: token.clone(),

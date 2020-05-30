@@ -1,12 +1,12 @@
 select
-  members.id,
-  users.id,
-  users.default_email,
-  users.name,
-  members.invited_by,
-  members.joined_at,
-  members.left_at,
-  members.permissions
+  members.id          as member_id,
+  users.id            as user_id,
+  users.default_email as user_email,
+  users.name          as user_name,
+  members.invited_by  as invited_by,
+  members.joined_at   as joined_at,
+  members.left_at     as left_at,
+  members.permissions as permissions
 from
   krumnet.lobby_memberships as members
 inner join

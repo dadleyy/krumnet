@@ -52,6 +52,13 @@ async fn execute<'a>(ctx: &Context<'a>, job: &QueuedJob) -> QueuedJob {
       );
       handlers::lobby_memberships::cleanup(&job.id, &member_id, &lobby_id, &ctx).await
     }
+    Job::CreateGame {
+      creator, lobby_id, ..
+    } => {
+      debug!("passing create game off to handler");
+      handlers::lobbies::create_game(&job.id, &creator, &lobby_id, &ctx.records).await
+    }
+
     Job::CleanupGameMembership(details) => {
       debug!("handler cleaning up game membership {}", details.member_id);
       QueuedJob {
@@ -59,11 +66,13 @@ async fn execute<'a>(ctx: &Context<'a>, job: &QueuedJob) -> QueuedJob {
         job: handlers::game_memberships::cleanup(&details, &ctx).await,
       }
     }
-    Job::CreateGame {
-      creator, lobby_id, ..
-    } => {
-      debug!("passing create game off to handler");
-      handlers::lobbies::create_game(&job.id, &creator, &lobby_id, &ctx.records).await
+
+    Job::CheckRoundCompletion(details) => {
+      debug!("handler checking round completion {}", details.round_id);
+      QueuedJob {
+        id: job.id.clone(),
+        job: handlers::games::check_round_completion(&details, &ctx).await,
+      }
     }
   }
 }

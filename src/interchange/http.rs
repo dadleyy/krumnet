@@ -28,6 +28,7 @@ pub struct GameRoundEntry {
 pub struct GameRoundDetails {
   pub id: String,
   pub entries: Vec<GameRoundEntry>,
+  pub results: Vec<GameRoundPlacement>,
   pub prompt: Option<String>,
   pub position: u32,
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
@@ -91,6 +92,8 @@ pub struct GameDetails {
   pub name: String,
   #[serde(with = "chrono::serde::ts_milliseconds")]
   pub created: DateTime<Utc>,
+  #[serde(with = "chrono::serde::ts_milliseconds_option")]
+  pub ended: Option<DateTime<Utc>>,
   pub members: Vec<GameMember>,
   pub rounds: Vec<GameRound>,
 }
@@ -101,12 +104,20 @@ pub struct LobbyMember {
   pub member_id: String,
   pub user_id: String,
   pub name: String,
-  pub email: String,
   pub invited_by: Option<String>,
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
   pub joined_at: Option<DateTime<Utc>>,
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
   pub left_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct GameRoundPlacement {
+  pub id: String,
+  pub user_name: String,
+  pub user_id: String,
+  pub place: i32,
 }
 
 #[derive(Debug, Serialize)]
@@ -117,6 +128,8 @@ pub struct LobbyGame {
   pub rounds_remaining: i64,
   #[serde(with = "chrono::serde::ts_milliseconds")]
   pub created: DateTime<Utc>,
+  #[serde(with = "chrono::serde::ts_milliseconds_option")]
+  pub ended: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -178,6 +191,7 @@ impl From<QueuedJob> for JobHandle {
       }
       Job::CheckRoundFulfillment { .. }
       | Job::CleanupLobbyMembership { .. }
+      | Job::CheckRoundCompletion(_)
       | Job::CleanupGameMembership { .. } => without_result(id),
     }
   }

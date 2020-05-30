@@ -26,20 +26,18 @@ pub struct Payload {
   kind: String,
 }
 
-fn parse_member_row(row: &Row) -> Option<interchange::http::LobbyMember> {
-  let member_id = row.try_get::<_, String>(0).ok()?;
-  let user_id = row.try_get::<_, String>(1).ok()?;
-  let email = row.try_get::<_, String>(2).ok()?;
-  let name = row.try_get::<_, String>(3).ok()?;
-  let invited_by = row.try_get::<_, Option<String>>(4).ok()?;
-  let joined_at = row.try_get::<_, Option<DateTime<Utc>>>(5).ok()?;
-  let left_at = row.try_get::<_, Option<DateTime<Utc>>>(6).ok()?;
+fn parse_member_row(row: &Row) -> Result<interchange::http::LobbyMember> {
+  let member_id = row.try_get("member_id").map_err(errors::humanize_error)?;
+  let user_id = row.try_get("user_id").map_err(errors::humanize_error)?;
+  let name = row.try_get("user_name").map_err(errors::humanize_error)?;
+  let invited_by = row.try_get("invited_by").map_err(errors::humanize_error)?;
+  let joined_at = row.try_get("joined_at").map_err(errors::humanize_error)?;
+  let left_at = row.try_get("left_at").map_err(errors::humanize_error)?;
 
-  Some(interchange::http::LobbyMember {
+  Ok(interchange::http::LobbyMember {
     member_id,
     user_id,
     name,
-    email,
     invited_by,
     joined_at,
     left_at,
@@ -52,13 +50,15 @@ pub fn load_games(context: &Context, id: &String) -> Result<Vec<interchange::htt
   rows
     .iter()
     .map(|row| {
-      let id = row.try_get(0).map_err(errors::humanize_error)?;
-      let created = row.try_get(1).map_err(errors::humanize_error)?;
-      let name = row.try_get(2).map_err(errors::humanize_error)?;
-      let rounds_remaining = row.try_get(3).map_err(errors::humanize_error)?;
+      let id = row.try_get("game_id").map_err(errors::humanize_error)?;
+      let created = row.try_get("created_at").map_err(errors::humanize_error)?;
+      let ended = row.try_get("ended_at").map_err(errors::humanize_error)?;
+      let name = row.try_get("game_name").map_err(errors::humanize_error)?;
+      let rounds_remaining = row.try_get("round_count").map_err(errors::humanize_error)?;
       Ok(interchange::http::LobbyGame {
         id,
         created,
+        ended,
         name,
         rounds_remaining,
       })
@@ -69,7 +69,7 @@ pub fn load_games(context: &Context, id: &String) -> Result<Vec<interchange::htt
 pub fn load_members(context: &Context, id: &String) -> Result<Vec<interchange::http::LobbyMember>> {
   let rows = context.records().query(LOAD_LOBBY_MEMBERS, &[id])?;
   debug!("found {} member rows", rows.len());
-  Ok(rows.iter().filter_map(parse_member_row).collect())
+  rows.iter().map(parse_member_row).collect()
 }
 
 pub async fn details(context: &Context, id: &String) -> Result<Response> {

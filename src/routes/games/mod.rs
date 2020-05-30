@@ -1,6 +1,6 @@
 use async_std::io::Read as AsyncRead;
 use chrono::{DateTime, Utc};
-use log::{debug, warn};
+use log::{debug, info, warn};
 use serde::Deserialize;
 use serde_json::from_slice as deserialize;
 use std::io::Result;
@@ -19,6 +19,95 @@ const LOAD_MEMBERS: &'static str = include_str!("data-store/load-game-members.sq
 const LOAD_ROUNDS: &'static str = include_str!("data-store/load-rounds.sql");
 const GAME_FOR_ENTRY: &'static str = include_str!("data-store/game-for-entry-creation.sql");
 const CREATE_ENTRY: &'static str = include_str!("data-store/create-round-entry.sql");
+const CREATE_VOTE: &'static str = include_str!("data-store/create-round-entry-vote.sql");
+
+#[derive(Debug, Deserialize)]
+struct EntryVotePayload {
+  pub round_id: String,
+  pub entry_id: String,
+}
+
+pub async fn create_entry_vote<R: AsyncRead + Unpin>(
+  context: &Context,
+  reader: &mut R,
+) -> Result<Response> {
+  let uid = match context.authority() {
+    Authority::None => return Ok(Response::not_found().cors(context.cors())),
+    Authority::User { id, .. } => id,
+  };
+  let contents = read_size_async(reader, context.pending()).await?;
+  let payload = deserialize::<EntryVotePayload>(&contents)?;
+  let authority = authority_for_round(context, &payload.round_id, &uid).await?;
+
+  info!(
+    "user {} voting for entry '{}' for round '{}'",
+    authority.user_id, payload.entry_id, authority.round_id
+  );
+
+  let attempt = context
+    .records()
+    .query(CREATE_VOTE, &[&payload.entry_id, &authority.member_id])?
+    .into_iter()
+    .nth(0)
+    .map(|row| {
+      row
+        .try_get::<_, String>("id")
+        .map_err(errors::humanize_error)
+    });
+
+  let vote_id = match attempt {
+    Some(e) => e?,
+    None => return Ok(Response::not_found().cors(context.cors())),
+  };
+
+  info!("vote creation attempt: {:?}, queing job", vote_id);
+  let job_context = interchange::jobs::CheckRoundCompletion {
+    round_id: authority.round_id.clone(),
+    game_id: authority.game_id.clone(),
+    result: None,
+  };
+  context
+    .jobs()
+    .queue(&interchange::jobs::Job::CheckRoundCompletion(job_context))
+    .await?;
+
+  return Ok(Response::default().cors(context.cors()));
+}
+
+struct RoundAuthority {
+  lobby_id: String,
+  game_id: String,
+  member_id: String,
+  user_id: String,
+  round_id: String,
+}
+
+async fn authority_for_round(
+  context: &Context,
+  round_id: &String,
+  user_id: &String,
+) -> Result<RoundAuthority> {
+  context
+    .records()
+    .query(GAME_FOR_ENTRY, &[round_id, user_id])?
+    .into_iter()
+    .nth(0)
+    .map(|row| {
+      let lobby_id = row.try_get("lobby_id").map_err(errors::humanize_error)?;
+      let game_id = row.try_get("game_id").map_err(errors::humanize_error)?;
+      let member_id = row.try_get("member_id").map_err(errors::humanize_error)?;
+      let user_id = row.try_get("user_id").map_err(errors::humanize_error)?;
+      let round_id = row.try_get("round_id").map_err(errors::humanize_error)?;
+      Ok(RoundAuthority {
+        lobby_id,
+        game_id,
+        member_id,
+        user_id,
+        round_id,
+      })
+    })
+    .unwrap_or(Err(errors::e("unauthorized")))
+}
 
 #[derive(Debug, Deserialize)]
 struct EntryPayload {
@@ -37,40 +126,19 @@ pub async fn create_entry<R: AsyncRead + Unpin>(
 
   let contents = read_size_async(reader, context.pending()).await?;
   let payload = deserialize::<EntryPayload>(&contents)?;
-  let authority = match context
-    .records()
-    .query(GAME_FOR_ENTRY, &[&payload.round_id, &uid])?
-    .iter()
-    .nth(0)
-    .and_then(|row| {
-      let lobby_id = row.try_get::<_, String>(0).map_err(log_err).ok()?;
-      let game_id = row.try_get::<_, String>(1).map_err(log_err).ok()?;
-      let round_id = row.try_get::<_, String>(2).map_err(log_err).ok()?;
-      let member_id = row.try_get::<_, String>(3).map_err(log_err).ok()?;
-      let user_id = row.try_get::<_, String>(4).map_err(log_err).ok()?;
-      Some((lobby_id, game_id, round_id, member_id, user_id))
-    }) {
-    None => {
-      warn!(
-        "unable to find game for user '{}' by round '{}'",
-        uid, payload.round_id
-      );
-      return Ok(Response::not_found().cors(context.cors()));
-    }
-    Some(game) => game,
-  };
+  let authority = authority_for_round(context, &payload.round_id, &uid).await?;
 
   let created = context
     .records()
     .query(
       CREATE_ENTRY,
       &[
-        &authority.2,   // round_id
-        &authority.3,   // member_id
-        &payload.entry, // entry
-        &authority.1,   // game_id
-        &authority.0,   // lobby_id
-        &authority.4,   // user_id
+        &authority.round_id,
+        &authority.member_id,
+        &payload.entry,
+        &authority.game_id,
+        &authority.lobby_id,
+        &authority.user_id,
       ],
     )
     .map_err(log_err)?
@@ -179,40 +247,48 @@ fn rounds_for_game(context: &Context, id: &String) -> Result<Vec<interchange::ht
     .collect()
 }
 
+struct GameDetails {
+  pub game_id: String,
+  pub created_at: DateTime<Utc>,
+  pub name: String,
+  pub ended_at: Option<DateTime<Utc>>,
+}
+
 async fn find_game(context: &Context, uid: &String, gid: &String) -> Result<Response> {
-  let (id, created, name) = match context
+  let details = context
     .records()
     .query(LOAD_GAME, &[gid, uid])?
     .iter()
     .nth(0)
-    .and_then(|r| {
-      let id = r.try_get::<_, String>(0).ok()?;
-      let created = r
-        .try_get::<_, DateTime<Utc>>(1)
-        .map_err(|e| {
-          warn!("unable to parse time value as datetime - {}", e);
-          errors::e("bad date time")
-        })
-        .ok()?;
-      let name = r.try_get::<_, String>(2).ok()?;
+    .map(|row| {
+      let game_id = row.try_get("game_id").map_err(errors::humanize_error)?;
+      let created_at = row.try_get("created_at").map_err(errors::humanize_error)?;
+      let name = row.try_get("game_name").map_err(errors::humanize_error)?;
+      let ended_at = row.try_get("ended_at").map_err(errors::humanize_error)?;
+      Ok(GameDetails {
+        game_id,
+        created_at,
+        name,
+        ended_at,
+      })
+    })
+    .unwrap_or(Err(errors::e("Unable to find game")))?;
 
-      Some((id, created, name))
-    }) {
-    Some(contents) => contents,
-    None => return Ok(Response::not_found().cors(context.cors())),
-  };
+  debug!(
+    "found game '{}', created '{:?}'",
+    details.game_id, details.created_at
+  );
 
-  debug!("found game '{}', created '{:?}'", id, created);
-
-  let rounds = rounds_for_game(context, &id).map_err(log_err)?;
-  let members = members_for_game(context, &id).map_err(log_err)?;
+  let rounds = rounds_for_game(context, &details.game_id).map_err(log_err)?;
+  let members = members_for_game(context, &details.game_id).map_err(log_err)?;
 
   debug!("found members[{:?}] rounds[{:?}]", members, &rounds);
 
   let result = interchange::http::GameDetails {
-    id,
-    created,
-    name,
+    id: details.game_id.clone(),
+    created: details.created_at.clone(),
+    name: details.name.clone(),
+    ended: details.ended_at.clone(),
     members,
     rounds,
   };
@@ -233,7 +309,7 @@ pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
     return Ok(Response::not_found().cors(context.cors()));
   }
 
-  let gid = ids.iter().nth(0).ok_or(errors::e("invalid id"))?;
+  let gid = ids.iter().nth(0).ok_or(errors::e("Invalid id"))?;
   debug!("attempting to find game from single id - {:?}", gid);
   find_game(context, uid, gid).await
 }

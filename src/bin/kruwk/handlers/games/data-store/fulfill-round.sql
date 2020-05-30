@@ -1,7 +1,7 @@
 update
   krumnet.game_rounds as rounds
 set
-  completed_at = now()
+  fulfilled_at = now()
 where
   rounds.id = $1
 returning

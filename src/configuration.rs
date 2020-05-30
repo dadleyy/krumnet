@@ -138,6 +138,7 @@ pub struct SessionStoreConfiguration {
   pub redis_uri: String,
   pub secret: String,
   pub session_prefix: String,
+  pub expiration_timeout: Option<u64>,
 }
 
 #[cfg(test)]
