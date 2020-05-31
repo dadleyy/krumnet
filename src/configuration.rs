@@ -1,11 +1,14 @@
 extern crate serde;
 
-use log::warn;
+use log::{debug, warn};
 use serde::Deserialize;
 use std::env::var_os;
 use std::fs::read;
 use std::io::{Error, ErrorKind};
+use std::path::Path;
 use std::str::FromStr;
+
+const DEFAULT_CONFIG_FILE: &'static str = "krumnet-config.json";
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Configuration {
@@ -36,6 +39,19 @@ impl Configuration {
 
 impl Default for Configuration {
   fn default() -> Self {
+    let path = Path::new(DEFAULT_CONFIG_FILE);
+
+    if path.exists() {
+      debug!(
+        "found '{}', attempting to load as default",
+        DEFAULT_CONFIG_FILE
+      );
+
+      if let Ok(config) = Configuration::from_str(DEFAULT_CONFIG_FILE) {
+        return config;
+      }
+    }
+
     let google = GoogleCredentials::default();
     let krumi = KrumiConfiguration::default();
     Configuration {

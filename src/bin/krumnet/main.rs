@@ -9,7 +9,7 @@ use log::info;
 
 #[derive(Debug, Gumdrop)]
 struct Options {
-  #[options(help = "configuration json file", default = "krumnet-config.json")]
+  #[options(help = "configuration json file")]
   config: Configuration,
 
   #[options(help = "display the help text")]
