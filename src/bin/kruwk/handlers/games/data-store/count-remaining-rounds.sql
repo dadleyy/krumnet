@@ -1,5 +1,5 @@
 select
-  count(*)
+  count(*) as remaining_rounds
 from
   krumnet.game_rounds as rounds
 where

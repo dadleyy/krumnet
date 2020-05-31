@@ -87,6 +87,15 @@ pub struct GameRound {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub struct GameDetailPlacement {
+  pub id: String,
+  pub user_name: String,
+  pub user_id: String,
+  pub place: i32,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub struct GameDetails {
   pub id: String,
   pub name: String,
@@ -96,6 +105,7 @@ pub struct GameDetails {
   pub ended: Option<DateTime<Utc>>,
   pub members: Vec<GameMember>,
   pub rounds: Vec<GameRound>,
+  pub placements: Vec<GameDetailPlacement>,
 }
 
 #[derive(Debug, Serialize)]

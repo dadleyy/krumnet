@@ -17,6 +17,7 @@ use crate::{
 const LOAD_GAME: &'static str = include_str!("data-store/load-game-details.sql");
 const LOAD_MEMBERS: &'static str = include_str!("data-store/load-game-members.sql");
 const LOAD_ROUNDS: &'static str = include_str!("data-store/load-rounds.sql");
+const LOAD_PLACEMENTS: &'static str = include_str!("data-store/load-placements.sql");
 const GAME_FOR_ENTRY: &'static str = include_str!("data-store/game-for-entry-creation.sql");
 const CREATE_ENTRY: &'static str = include_str!("data-store/create-round-entry.sql");
 const CREATE_VOTE: &'static str = include_str!("data-store/create-round-entry-vote.sql");
@@ -254,6 +255,30 @@ struct GameDetails {
   pub ended_at: Option<DateTime<Utc>>,
 }
 
+fn placements_for_game(
+  context: &Context,
+  game_id: &String,
+) -> Result<Vec<interchange::http::GameDetailPlacement>> {
+  context
+    .records()
+    .query(LOAD_PLACEMENTS, &[game_id])?
+    .into_iter()
+    .map(|row| {
+      let id = row.try_get("id").map_err(errors::humanize_error)?;
+      let user_name = row.try_get("user_name").map_err(errors::humanize_error)?;
+      let user_id = row.try_get("user_id").map_err(errors::humanize_error)?;
+      let place = row.try_get("placement").map_err(errors::humanize_error)?;
+      debug!("found placement - '{}'", id);
+      Ok(interchange::http::GameDetailPlacement {
+        id,
+        user_name,
+        user_id,
+        place,
+      })
+    })
+    .collect()
+}
+
 async fn find_game(context: &Context, uid: &String, gid: &String) -> Result<Response> {
   let details = context
     .records()
@@ -281,8 +306,7 @@ async fn find_game(context: &Context, uid: &String, gid: &String) -> Result<Resp
 
   let rounds = rounds_for_game(context, &details.game_id).map_err(log_err)?;
   let members = members_for_game(context, &details.game_id).map_err(log_err)?;
-
-  debug!("found members[{:?}] rounds[{:?}]", members, &rounds);
+  let placements = placements_for_game(context, &details.game_id).map_err(log_err)?;
 
   let result = interchange::http::GameDetails {
     id: details.game_id.clone(),
@@ -291,6 +315,7 @@ async fn find_game(context: &Context, uid: &String, gid: &String) -> Result<Resp
     ended: details.ended_at.clone(),
     members,
     rounds,
+    placements,
   };
 
   Response::ok_json(&result).map(|r| r.cors(context.cors()))

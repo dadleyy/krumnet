@@ -11,11 +11,25 @@ const COUNT_REMAINING_ROUNDS: &'static str =
 const FULFILL_ROUND: &'static str = include_str!("./data-store/fulfill-round.sql");
 const END_GAME: &'static str = include_str!("./data-store/mark-game-ended.sql");
 const START_NEXT: &'static str = include_str!("./data-store/start-next.sql");
-const CREATE_PLACEMENTS: &'static str = include_str!("./data-store/create-round-placements.sql");
+const CREATE_ROUND_PLACEMENTS: &'static str =
+  include_str!("./data-store/create-round-placements.sql");
+const CREATE_GAME_PLACEMENTS: &'static str =
+  include_str!("./data-store/create-game-placements.sql");
 
 fn warn_and_stringify<E: std::error::Error>(e: E) -> String {
   warn!("{}", e);
   format!("{}", e)
+}
+
+fn count_remaining_rounds(game_id: &String, context: &Context<'_>) -> Result<i64, String> {
+  context
+    .records
+    .query(COUNT_REMAINING_ROUNDS, &[game_id])
+    .map_err(warn_and_stringify)?
+    .into_iter()
+    .nth(0)
+    .map(|row| row.try_get("remaining_rounds").map_err(warn_and_stringify))
+    .unwrap_or(Err(format!("Unable to count remaining rows")))
 }
 
 fn round_completion_result(
@@ -62,19 +76,12 @@ fn round_completion_result(
 
   context
     .records
-    .query(CREATE_PLACEMENTS, &[&details.round_id])
+    .query(CREATE_ROUND_PLACEMENTS, &[&details.round_id])
     .map_err(warn_and_stringify)?;
 
   info!("round '{}' placement results finished", details.round_id);
 
-  let count = context
-    .records
-    .query(COUNT_REMAINING_ROUNDS, &[&details.game_id])
-    .map_err(warn_and_stringify)?
-    .into_iter()
-    .nth(0)
-    .map(|row| row.try_get::<_, i64>(0).map_err(warn_and_stringify))
-    .unwrap_or(Err(format!("Unable to count remaining rows")))?;
+  let count = count_remaining_rounds(&details.game_id, context)?;
 
   if count != 0 {
     info!("{} remaining rounds for game '{}'", count, details.game_id);
@@ -85,6 +92,16 @@ fn round_completion_result(
     "found {} members for round (votes: {:?}). {} remaining rounds",
     member_count, vote_count, count
   );
+
+  let placement_ids = context
+    .records
+    .query(CREATE_GAME_PLACEMENTS, &[&details.game_id])
+    .map_err(warn_and_stringify)?
+    .into_iter()
+    .map(|row| row.try_get::<_, String>("id").map_err(warn_and_stringify))
+    .collect::<Result<Vec<String>, String>>()?;
+
+  info!("created placement results - {:?}", placement_ids);
 
   context
     .records

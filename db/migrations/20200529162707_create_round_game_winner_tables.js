@@ -11,6 +11,7 @@ exports.up = async function(knex) {
     table.integer('place').unsigned().notNullable();
     table.unique('id');
     table.unique(['place', 'round_id'], 'single_round_winner');
+    table.unique(['member_id', 'round_id'], 'single_member_round_placement');
   });
   await knex.schema.withSchema('krumnet').createTable('game_member_placement_results', function(table) {
     table.string('id').defaultTo(knex.raw('uuid_generate_v4()')).notNullable().primary();
@@ -22,6 +23,7 @@ exports.up = async function(knex) {
     table.integer('place').unsigned().notNullable();
     table.unique('id');
     table.unique(['place', 'game_id'], 'single_game_winner');
+    table.unique(['member_id', 'game_id'], 'single_member_game_placement');
   });
 };
 
