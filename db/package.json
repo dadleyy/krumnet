@@ -5,6 +5,7 @@
   "scripts": {
     "migrate:list": "knex migrate:list",
     "migrate:make": "knex migrate:make",
+    "migrate:all": "knex migrate:latest",
     "migrate:up": "knex migrate:up",
     "migrate:down": "knex migrate:down",
     "seed:make": "knex seed:make",

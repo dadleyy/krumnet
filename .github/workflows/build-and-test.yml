@@ -32,7 +32,7 @@ jobs:
       - name: Prepare knex
         run: cd db && npm i
       - name: Migrate DB
-        run: cd db && npm run migrate:up
+        run: cd db && npm run migrate:all
         env:
           DEBUG: '*'
           KRUMNET_TEST_CONFIG_FILE: '../ci/github-actions/krumnet-config.json'
