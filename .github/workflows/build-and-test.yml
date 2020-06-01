@@ -22,7 +22,7 @@ jobs:
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     env:
       PGPASSWORD: postgres
-      DATABASE_URL: postgresql://postgres@postgres/postgres
+      DATABASE_URL: postgresql://postgres:postgres@postgres/postgres
     steps:
       - uses: actions/checkout@v1
       - name: Apt update
