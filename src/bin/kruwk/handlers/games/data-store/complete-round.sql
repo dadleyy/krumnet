@@ -5,4 +5,5 @@ set
 where
   rounds.id = $1
 returning
-  position, game_id;
+  position,
+  game_id;

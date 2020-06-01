@@ -5,7 +5,7 @@
     "cors_origin": "http://0.0.0.0:8081"
   },
   "record_store": {
-    "postgres_uri": "host=postgres user=postgres password=postgres port=8099 dbname=krumnet_test",
+    "postgres_uri": "postgresql://postgres@0.0.0.0:8099/krumnet_test",
     "redis_uri": "0.0.0.0:6379"
   },
   "job_store": {

@@ -3,7 +3,6 @@ use std::io::Result;
 use std::marker::Unpin;
 
 use async_std::io::Read;
-use bit_vec::BitVec;
 use log::{debug, info, warn};
 use serde::Deserialize;
 use serde_json::from_slice as deserialize;
@@ -86,20 +85,15 @@ pub async fn details(context: &Context, id: &String) -> Result<Response> {
     .iter()
     .nth(0)
     .map(|row| {
-      let id = row
-        .try_get::<_, String>(0)
-        .map_err(errors::humanize_error)?;
-      let name = row
-        .try_get::<_, String>(1)
-        .map_err(errors::humanize_error)?;
-      let _settings = row
-        .try_get::<_, BitVec>(2)
-        .map_err(errors::humanize_error)?;
+      let id = row.try_get("lobby_id").map_err(errors::humanize_error)?;
+      let name = row.try_get("lobby_name").map_err(errors::humanize_error)?;
       let _created = row
-        .try_get::<_, DateTime<Utc>>(3)
+        .try_get::<_, DateTime<Utc>>("created_at")
         .map_err(errors::humanize_error)?;
 
-      let matches = row.try_get::<_, i64>(4).map_err(errors::humanize_error)?;
+      let matches = row
+        .try_get::<_, i64>("member_count")
+        .map_err(errors::humanize_error)?;
 
       if matches == 0 {
         debug!("user '{}' is not a member of lobby '{}'", uid, id);

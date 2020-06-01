@@ -5,8 +5,7 @@ select
   users.name          as user_name,
   members.invited_by  as invited_by,
   members.joined_at   as joined_at,
-  members.left_at     as left_at,
-  members.permissions as permissions
+  members.left_at     as left_at
 from
   krumnet.lobby_memberships as members
 inner join

@@ -1,6 +1,6 @@
 select
-  rounds.id,
-  count(entries.id)
+  rounds.id         as round_id,
+  count(entries.id) as entry_count
 from
   krumnet.game_round_entries as entries
 left join

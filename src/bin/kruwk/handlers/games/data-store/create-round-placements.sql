@@ -23,4 +23,6 @@ order by
 on conflict on constraint
   single_round_winner
 do update set
-  created_at = now();
+  created_at = now()
+returning
+  id;

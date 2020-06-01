@@ -1,6 +1,6 @@
 select
-  rounds.id,
-  count(members.id)
+  rounds.id         as round_id,
+  count(members.id) as member_count
 from
   krumnet.game_rounds as rounds
 left join

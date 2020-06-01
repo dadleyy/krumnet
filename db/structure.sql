@@ -65,7 +65,6 @@ create table krumnet.game_memberships (
   lobby_id varchar(36) references krumnet.lobbies(id) not null,
   lobby_member_id varchar(36) references krumnet.lobby_memberships(id) not null,
   game_id varchar(36) references krumnet.games(id) not null,
-  permissions bit(10) not null,
   created_at timestamp with time zone default now(),
   left_at timestamp with time zone
 );

@@ -1,10 +1,9 @@
 select
-  members.id member_id,
-  members.permissions permissions,
-  members.created_at created_at,
-  users.id user_id,
-  users.default_email user_email,
-  users.name user_name
+  members.id          as member_id,
+  members.created_at  as created_at,
+  users.id            as user_id,
+  users.default_email as user_email,
+  users.name          as user_name
 from
   krumnet.game_memberships as members
 right join
