@@ -26,54 +26,35 @@ struct Options {
 
 async fn execute<'a>(ctx: &Context<'a>, job: &QueuedJob) -> QueuedJob {
   match &job.job {
-    Job::CheckRoundFulfillment { round_id, .. } => {
-      debug!("received round fulfillment check job - '{}'", round_id);
-      let result = Some(handlers::games::check_round_fullfillment(round_id, &ctx.records).await);
-      QueuedJob {
-        id: job.id.clone(),
-        job: Job::CheckRoundFulfillment {
-          round_id: round_id.clone(),
-          result,
-        },
-      }
-    }
-    Job::CreateLobby { creator, .. } => {
-      debug!("passing create lobby job off to create lobby handler");
-      handlers::lobbies::create_lobby(&job.id, &creator, &ctx.records).await
-    }
-    Job::CleanupLobbyMembership {
-      member_id,
-      lobby_id,
-      ..
-    } => {
-      debug!(
-        "handling lobby membership cleanup for membership '{}'",
-        member_id
-      );
-      handlers::lobby_memberships::cleanup(&job.id, &member_id, &lobby_id, &ctx).await
-    }
-    Job::CreateGame {
-      creator, lobby_id, ..
-    } => {
-      debug!("passing create game off to handler");
-      handlers::lobbies::create_game(&job.id, &creator, &lobby_id, &ctx.records).await
-    }
+    Job::CheckRoundFulfillment(details) => QueuedJob {
+      id: job.id.clone(),
+      job: handlers::games::check_round_fullfillment(&details, &ctx.records).await,
+    },
 
-    Job::CleanupGameMembership(details) => {
-      debug!("handler cleaning up game membership {}", details.member_id);
-      QueuedJob {
-        id: job.id.clone(),
-        job: handlers::game_memberships::cleanup(&details, &ctx).await,
-      }
-    }
+    Job::CreateLobby(details) => QueuedJob {
+      id: job.id.clone(),
+      job: handlers::lobbies::create_lobby(&job.id, &details, &ctx.records).await,
+    },
 
-    Job::CheckRoundCompletion(details) => {
-      debug!("handler checking round completion {}", details.round_id);
-      QueuedJob {
-        id: job.id.clone(),
-        job: handlers::games::check_round_completion(&details, &ctx).await,
-      }
-    }
+    Job::CleanupLobbyMembership(details) => QueuedJob {
+      id: job.id.clone(),
+      job: handlers::lobby_memberships::cleanup(&job.id, &details, &ctx).await,
+    },
+
+    Job::CreateGame(details) => QueuedJob {
+      id: job.id.clone(),
+      job: handlers::lobbies::create_game(&job.id, &details, &ctx.records).await,
+    },
+
+    Job::CleanupGameMembership(details) => QueuedJob {
+      id: job.id.clone(),
+      job: handlers::game_memberships::cleanup(&details, &ctx).await,
+    },
+
+    Job::CheckRoundCompletion(details) => QueuedJob {
+      id: job.id.clone(),
+      job: handlers::games::check_round_completion(&details, &ctx).await,
+    },
   }
 }
 

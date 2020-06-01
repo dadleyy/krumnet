@@ -33,10 +33,11 @@ pub async fn cleanup_inner(
   debug!("ids - {:?}", round_ids);
 
   for id in &round_ids {
-    let job = interchange::jobs::Job::CheckRoundFulfillment {
-      round_id: id.clone(),
-      result: None,
-    };
+    let job =
+      interchange::jobs::Job::CheckRoundFulfillment(interchange::jobs::CheckRoundFulfillment {
+        round_id: id.clone(),
+        result: None,
+      });
     info!("queing round completion check job for round {:?}", job);
     context.jobs.queue(&job).await.map_err(|e| {
       warn!("unable to queue round completion job - {}", e);

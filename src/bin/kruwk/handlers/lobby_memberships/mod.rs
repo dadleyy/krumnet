@@ -119,25 +119,21 @@ pub async fn cleanup_inner(
 
 pub async fn cleanup(
   job_id: &String,
-  member_id: &String,
-  lobby_id: &String,
+  details: &interchange::jobs::CleanupLobbyMembership,
   context: &Context<'_>,
-) -> interchange::jobs::QueuedJob {
-  debug!("job '{}', cleanup '{}'", job_id, member_id);
+) -> interchange::jobs::Job {
+  debug!("job '{}', cleanup '{}'", job_id, details.member_id);
 
-  let res = cleanup_inner(member_id, lobby_id, context)
+  let res = cleanup_inner(&details.member_id, &details.lobby_id, context)
     .await
     .map_err(|err| {
       warn!("unable to cleanup - {}", err);
       err
     });
 
-  interchange::jobs::QueuedJob {
-    id: job_id.clone(),
-    job: interchange::jobs::Job::CleanupLobbyMembership {
-      member_id: member_id.clone(),
-      lobby_id: lobby_id.clone(),
-      result: Some(res),
-    },
-  }
+  interchange::jobs::Job::CleanupLobbyMembership(interchange::jobs::CleanupLobbyMembership {
+    member_id: details.member_id.clone(),
+    lobby_id: details.lobby_id.clone(),
+    result: Some(res),
+  })
 }

@@ -30,12 +30,6 @@ create table krumnet.lobbies (
   job_id varchar not null,
   name varchar unique not null,
 
-  -- bitmask
-  settings bit(10) not null,
-  -- | bit | role                    |
-  -- | --- | ----------------------- |
-  -- | 0   | public = 0, private = 1 |
-
   created_at timestamp with time zone default now(),
   closed_at timestamp with time zone
 );
@@ -47,7 +41,6 @@ create table krumnet.lobby_memberships (
   user_id varchar(36) references krumnet.users(id) not null,
   lobby_id varchar(36) references krumnet.lobbies(id) not null,
   invited_by varchar(36) references krumnet.users(id),
-  permissions bit(10) not null,
   joined_at timestamp with time zone,
   left_at timestamp with time zone,
   constraint single_membership unique (user_id, lobby_id)

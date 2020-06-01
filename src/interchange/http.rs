@@ -1,3 +1,4 @@
+use crate::interchange::jobs;
 use crate::interchange::jobs::{Job, QueuedJob};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -185,14 +186,14 @@ impl From<QueuedJob> for JobHandle {
     let id = job.id.clone();
 
     match job.job {
-      Job::CreateGame { result, .. } => {
+      Job::CreateGame(jobs::CreateGame { result, .. }) => {
         let result = result.map(|res| match res {
           Ok(id) => WrappedJobResult::Success(JobResult::NewGame { id }),
           Err(e) => WrappedJobResult::Failure(e),
         });
         JobHandle { id, result }
       }
-      Job::CreateLobby { creator: _, result } => {
+      Job::CreateLobby(jobs::CreateLobby { creator: _, result }) => {
         let result = result.map(|res| match res {
           Ok(id) => WrappedJobResult::Success(JobResult::NewLobby { id }),
           Err(e) => WrappedJobResult::Failure(e),

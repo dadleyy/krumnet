@@ -3,6 +3,8 @@ const path = require("path");
 const debug = require("debug");
 const log = debug("krumnet:knexfile");
 
+require("dotenv").config({ path: path.join(__dirname, '../.env') })
+
 const KEY_MAPPING = {
   dbname: "database",
 };
@@ -14,13 +16,16 @@ function parsePostgresString(input) {
   }, {});
 }
 
-module.exports = async function() {
+async function fromConfigFile() {
   const configFile = process.env["KRUMNET_TEST_CONFIG_FILE"] || path.resolve(__dirname, "../krumnet-config.json");
   log("attempting to load '%s'", configFile);
   const configData = await fs.promises.readFile(configFile);
-
   const config = JSON.parse(configData.toString("utf8"));
-  const connection = parsePostgresString(config["record_store"]["postgres_uri"]);
+  return parsePostgresString(config["record_store"]["postgres_uri"]);
+}
+
+module.exports = async function() {
+  const connection = process.env['DATABASE_URL'] || await fromConfigFile();
   log("loaded config - '%j'", connection);
 
   return {

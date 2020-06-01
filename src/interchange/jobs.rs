@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub struct CleanupGameMembershipContext {
   pub user_id: String,
@@ -11,7 +11,7 @@ pub struct CleanupGameMembershipContext {
   pub result: Option<Result<String, String>>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub struct CheckRoundCompletion {
   pub round_id: String,
@@ -19,29 +19,43 @@ pub struct CheckRoundCompletion {
   pub result: Option<Result<Option<String>, String>>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct CreateGame {
+  pub creator: String,
+  pub lobby_id: String,
+  pub result: Option<Result<String, String>>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct CleanupLobbyMembership {
+  pub member_id: String,
+  pub lobby_id: String,
+  pub result: Option<Result<String, String>>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct CreateLobby {
+  pub creator: String,
+  pub result: Option<Result<String, String>>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct CheckRoundFulfillment {
+  pub round_id: String,
+  pub result: Option<Result<u8, String>>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "t", content = "c")]
 pub enum Job {
-  // TODO: prefer inline struct or seprate?
-  CreateLobby {
-    creator: String,
-    result: Option<Result<String, String>>,
-  },
-  CreateGame {
-    creator: String,
-    lobby_id: String,
-    result: Option<Result<String, String>>,
-  },
-  CheckRoundFulfillment {
-    round_id: String,
-    result: Option<Result<u8, String>>,
-  },
-  CleanupLobbyMembership {
-    member_id: String,
-    lobby_id: String,
-    result: Option<Result<String, String>>,
-  },
-
+  CreateLobby(CreateLobby),
+  CheckRoundFulfillment(CheckRoundFulfillment),
+  CreateGame(CreateGame),
+  CleanupLobbyMembership(CleanupLobbyMembership),
   CheckRoundCompletion(CheckRoundCompletion),
   CleanupGameMembership(CleanupGameMembershipContext),
 }
@@ -72,8 +86,8 @@ pub struct QueuedJob {
 impl QueuedJob {
   pub fn user(&self) -> Option<String> {
     match &self.job {
-      Job::CreateLobby { creator, result: _ } => Some(creator.clone()),
-      Job::CreateGame { creator, .. } => Some(creator.clone()),
+      Job::CreateLobby(CreateLobby { creator, .. }) => Some(creator.clone()),
+      Job::CreateGame(CreateGame { creator, .. }) => Some(creator.clone()),
       Job::CheckRoundFulfillment { .. }
       | Job::CleanupLobbyMembership { .. }
       | Job::CheckRoundCompletion(_)

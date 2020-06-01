@@ -122,14 +122,15 @@ where
   }
 
   info!("membership '{}' is left", member_id);
+  let details = interchange::jobs::CleanupLobbyMembership {
+    member_id,
+    lobby_id,
+    result: None,
+  };
 
   context
     .jobs()
-    .queue(&interchange::jobs::Job::CleanupLobbyMembership {
-      member_id,
-      lobby_id,
-      result: None,
-    })
+    .queue(&interchange::jobs::Job::CleanupLobbyMembership(details))
     .await?;
 
   Ok(Response::default().cors(context.cors()))

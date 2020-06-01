@@ -209,10 +209,12 @@ where
 
   let job_id = context
     .jobs()
-    .queue(&interchange::jobs::Job::CreateLobby {
-      creator: uid.clone(),
-      result: None,
-    })
+    .queue(&interchange::jobs::Job::CreateLobby(
+      interchange::jobs::CreateLobby {
+        creator: uid.clone(),
+        result: None,
+      },
+    ))
     .await?;
 
   let payload = deserialize::<Payload>(&contents)?;

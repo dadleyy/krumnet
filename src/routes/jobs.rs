@@ -68,7 +68,7 @@ pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
 mod test {
   use super::with_access;
   use crate::{
-    interchange::jobs::{Job, QueuedJob},
+    interchange::jobs::{CreateLobby, Job, QueuedJob},
     Authority,
   };
 
@@ -77,10 +77,10 @@ mod test {
     let uid = String::from("s-123");
     let job = QueuedJob {
       id: String::from("s-job"),
-      job: Job::CreateLobby {
+      job: Job::CreateLobby(CreateLobby {
         creator: uid.clone(),
         result: None,
-      },
+      }),
     };
     let auth = Authority::None;
     assert!(with_access(&auth, job).is_none());
@@ -91,10 +91,10 @@ mod test {
     let uid = String::from("s-123");
     let job = QueuedJob {
       id: String::from("s-job"),
-      job: Job::CreateLobby {
+      job: Job::CreateLobby(CreateLobby {
         creator: format!("{}-456", uid.clone()),
         result: None,
-      },
+      }),
     };
     let auth = Authority::User {
       id: uid.clone(),
@@ -108,10 +108,10 @@ mod test {
     let uid = String::from("s-123");
     let job = QueuedJob {
       id: String::from("s-job"),
-      job: Job::CreateLobby {
+      job: Job::CreateLobby(CreateLobby {
         creator: uid.clone(),
         result: None,
-      },
+      }),
     };
     let auth = Authority::User {
       id: uid.clone(),

@@ -129,7 +129,7 @@ pub fn count_members(round_id: &String, records: &RecordStore) -> Result<i64, St
       rows
         .into_iter()
         .nth(0)
-        .ok_or(String::from("unable to find counts"))
+        .ok_or(format!("Unable to count members for round '{}'", round_id))
     })
     .and_then(|row| row.try_get::<_, i64>(1).map_err(warn_and_stringify))
 }
@@ -142,12 +142,12 @@ pub fn count_entries(round_id: &String, records: &RecordStore) -> Result<i64, St
       rows
         .into_iter()
         .nth(0)
-        .ok_or(String::from("unable to find counts"))
+        .ok_or(format!("Unable to count entries for round '{}'", round_id,))
     })
     .and_then(|row| row.try_get::<_, i64>(1).map_err(warn_and_stringify))
 }
 
-pub async fn check_round_fullfillment(
+async fn check_round_fullfillment_inner(
   round_id: &String,
   records: &RecordStore,
 ) -> Result<u8, String> {
@@ -189,11 +189,22 @@ pub async fn check_round_fullfillment(
   Ok(diff)
 }
 
+pub async fn check_round_fullfillment(
+  details: &interchange::jobs::CheckRoundFulfillment,
+  records: &RecordStore,
+) -> interchange::jobs::Job {
+  let result = Some(check_round_fullfillment_inner(&details.round_id, records).await);
+  interchange::jobs::Job::CheckRoundFulfillment(interchange::jobs::CheckRoundFulfillment {
+    round_id: details.round_id.clone(),
+    result,
+  })
+}
+
 #[cfg(test)]
 mod test {
   use super::check_round_fullfillment;
   use async_std::task::block_on;
-  use krumnet::{Configuration, RecordStore};
+  use krumnet::{interchange, Configuration, RecordStore};
   use std::env;
   use std::io::Result;
 
@@ -217,8 +228,19 @@ mod test {
   fn test_not_found() {
     let records = get_records();
     let id = String::from("not-valid");
-    let res = block_on(async { check_round_fullfillment(&id, &records).await });
-    assert!(res.is_err());
-    assert_eq!(format!("{}", res.unwrap_err()), "unable to find counts");
+    let job = interchange::jobs::CheckRoundFulfillment {
+      round_id: id,
+      result: None,
+    };
+    let res = block_on(async { check_round_fullfillment(&job, &records).await });
+    assert_eq!(
+      res,
+      interchange::jobs::Job::CheckRoundFulfillment(interchange::jobs::CheckRoundFulfillment {
+        result: Some(Err(String::from(
+          "Unable to count entries for round 'not-valid'"
+        ))),
+        ..job
+      })
+    );
   }
 }

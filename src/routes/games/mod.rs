@@ -160,10 +160,12 @@ pub async fn create_entry<R: AsyncRead + Unpin>(
 
       context
         .jobs()
-        .queue(&interchange::jobs::Job::CheckRoundFulfillment {
-          round_id,
-          result: None,
-        })
+        .queue(&interchange::jobs::Job::CheckRoundFulfillment(
+          interchange::jobs::CheckRoundFulfillment {
+            round_id,
+            result: None,
+          },
+        ))
         .await
         .map(|_id| Response::default().cors(context.cors()))
         .or_else(|e| {
@@ -369,13 +371,14 @@ where
     payload.lobby_id
   );
 
+  let details = interchange::jobs::CreateGame {
+    creator: uid.clone(),
+    lobby_id: payload.lobby_id.clone(),
+    result: None,
+  };
   let job_id = context
     .jobs()
-    .queue(&interchange::jobs::Job::CreateGame {
-      creator: uid.clone(),
-      lobby_id: payload.lobby_id.clone(),
-      result: None,
-    })
+    .queue(&interchange::jobs::Job::CreateGame(details))
     .await?;
 
   Response::ok_json(interchange::http::JobHandle {
