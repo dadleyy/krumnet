@@ -37,6 +37,11 @@ elaine = "^1.0"
 r2d2_postgres = "^0.16"
 r2d2 = "^0.8"
 jsonwebtoken = "^7.1.0"
+dotenv = "^0.15"
+
+[dependencies.sqlx]
+version = "^0.3"
+features = ["postgres", "chrono", "macros"]
 
 [dependencies.postgres]
 version = "^0.17.3"

@@ -1,11 +1,12 @@
 extern crate async_std;
+extern crate dotenv;
 extern crate gumdrop;
 
 use gumdrop::{parse_args_default_or_exit, Options as Gumdrop};
 
 use async_std::task;
 use krumnet::{serve, Configuration};
-use log::info;
+use log::{debug, info};
 
 #[derive(Debug, Gumdrop)]
 struct Options {
@@ -18,6 +19,11 @@ struct Options {
 
 fn main() {
   env_logger::builder().format_timestamp_millis().init();
+
+  if let Err(e) = dotenv::dotenv() {
+    debug!("unable to load .env - {}", e);
+  }
+
   let opts = parse_args_default_or_exit::<Options>();
 
   if opts.help {

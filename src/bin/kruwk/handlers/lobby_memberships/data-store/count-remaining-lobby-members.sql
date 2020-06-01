@@ -1,5 +1,5 @@
 select
-  count(members.id)
+  count(members.id) as count
 from
   krumnet.lobbies as lobbies
 left join

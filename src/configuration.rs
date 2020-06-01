@@ -9,6 +9,7 @@ use std::path::Path;
 use std::str::FromStr;
 
 const DEFAULT_CONFIG_FILE: &'static str = "krumnet-config.json";
+const DEFAULT_POSTGRES_URI: &'static str = "postgresql://postgres@0.0.0.0:5432/krumnet";
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Configuration {
@@ -145,8 +146,18 @@ pub struct JobStoreConfiguration {
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct RecordStoreConfiguration {
+  #[serde(default = "RecordStoreConfiguration::default_url_from_env")]
   pub postgres_uri: String,
   pub redis_uri: String,
+}
+
+impl RecordStoreConfiguration {
+  pub fn default_url_from_env() -> String {
+    let attempt = std::env::var("DATABASE_URL");
+    let out = attempt.unwrap_or(String::from(DEFAULT_POSTGRES_URI));
+    debug!("attempting to pull record store url from env - {}", out);
+    out
+  }
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

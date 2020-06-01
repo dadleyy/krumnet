@@ -3,4 +3,6 @@ update
 set
   closed_at = now()
 where
-  lobbies.id = $1;
+  lobbies.id = $1
+returning
+  lobbies.id;

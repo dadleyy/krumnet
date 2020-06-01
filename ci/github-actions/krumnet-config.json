@@ -5,7 +5,6 @@
     "cors_origin": "http://0.0.0.0:8081"
   },
   "record_store": {
-    "postgres_uri": "host=postgres user=postgres password=postgres",
     "redis_uri": "redis:6379"
   },
   "job_store": {

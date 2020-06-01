@@ -1,35 +1,36 @@
 use super::Context;
 use log::{debug, info, warn};
+use sqlx::query_file;
 
 use krumnet::interchange;
 use krumnet::interchange::jobs::CleanupGameMembershipContext;
-
-const SUBMIT_EMPTY_ENTRIES: &'static str =
-  include_str!("./data-store/create-empty-entries-for-game-member.sql");
 
 pub async fn cleanup_inner(
   details: &CleanupGameMembershipContext,
   context: &Context<'_>,
 ) -> Result<String, String> {
-  let rows = context
-    .records
-    .query(SUBMIT_EMPTY_ENTRIES, &[&details.user_id])
-    .map_err(|e| {
-      warn!("unable to create empty entries - {}", e);
-      format!("{}", e)
-    })?;
+  let mut conn = context.records.q().await.map_err(|e| {
+    warn!("unable to aquire database connection - {}", e);
+    format!("{}", e)
+  })?;
 
-  let mut round_ids = rows
-    .iter()
-    .map(|row| {
-      row.try_get::<_, String>(2).map_err(|e| {
-        warn!("unable to parse game id for auto entry {}", e);
-        format!("{}", e)
-      })
-    })
-    .collect::<Result<Vec<String>, String>>()?;
+  let mut round_ids = query_file!(
+    "src/bin/kruwk/handlers/game_memberships/data-store/create-empty-entries-for-game-member.sql",
+    &details.user_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(|e| {
+    warn!("unable to create empty entries - {}", e);
+    format!("{}", e)
+  })?
+  .into_iter()
+  .map(|row| row.round_id)
+  .collect::<Vec<String>>();
 
   round_ids.dedup();
+
+  debug!("ids - {:?}", round_ids);
 
   for id in &round_ids {
     let job = interchange::jobs::Job::CheckRoundFulfillment {

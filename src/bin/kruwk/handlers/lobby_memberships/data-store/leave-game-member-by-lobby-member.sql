@@ -7,6 +7,6 @@ where
 returning
   game_memberships.game_id,
   game_memberships.lobby_id,
-  game_memberships.id,
+  game_memberships.id as game_member_id,
   game_memberships.lobby_member_id,
   game_memberships.user_id;

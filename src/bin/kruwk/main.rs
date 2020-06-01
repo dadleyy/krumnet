@@ -79,6 +79,11 @@ async fn execute<'a>(ctx: &Context<'a>, job: &QueuedJob) -> QueuedJob {
 
 fn main() -> Result<()> {
   env_logger::builder().format_timestamp_millis().init();
+
+  if let Err(e) = dotenv::dotenv() {
+    debug!("unable to load dotenv - {}", e);
+  }
+
   let opts = parse_args_default_or_exit::<Options>();
 
   if opts.help {
