@@ -69,7 +69,6 @@ jobs:
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     container:
       image: rust:1.43.0
-    if: startsWith(github.ref, 'refs/tags/')
     env:
       PGPASSWORD: postgres
       DATABASE_URL: postgresql://postgres:postgres@postgres/postgres
@@ -119,6 +118,7 @@ jobs:
       - name: Compress distributable
         run: tar cvzf ./krumpled-armv7-unknown-linux-gnueabihf.tar.gz -C target/dist krumpled
       - name: Create release
+        if: startsWith(github.ref, 'refs/tags/')
         id: create_release
         uses: actions/create-release@v1
         env:
@@ -129,6 +129,7 @@ jobs:
           draft: false
           prerelease: false
       - name: Upload asset
+        if: startsWith(github.ref, 'refs/tags/')
         id: upload_release_asset
         uses: actions/upload-release-asset@v1
         env:
