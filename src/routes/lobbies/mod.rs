@@ -3,72 +3,100 @@ use std::io::Result;
 use std::marker::Unpin;
 
 use async_std::io::Read;
-use log::{debug, info, warn};
+use log::{debug, info};
 use serde::Deserialize;
 use serde_json::from_slice as deserialize;
+use sqlx::query_file;
 
 use crate::{
   errors,
   http::{query_values, Uri},
-  interchange, read_size_async,
-  records::Row,
-  Authority, Context, Response,
+  interchange, read_size_async, Authority, Context, Response,
 };
-
-pub const LOAD_LOBBY_DETAILS: &'static str = include_str!("./data-store/load-lobby-detail.sql");
-pub const LOAD_LOBBY_MEMBERS: &'static str = include_str!("./data-store/load-lobby-members.sql");
-pub const LOBBY_FOR_USER: &'static str = include_str!("./data-store/lobbies-for-user.sql");
-pub const GAMES_FOR_LOBBY: &'static str = include_str!("./data-store/load-lobby-games.sql");
 
 #[derive(Deserialize, Debug)]
 pub struct Payload {
   kind: String,
 }
 
-fn parse_member_row(row: &Row) -> Result<interchange::http::LobbyMember> {
-  let member_id = row.try_get("member_id").map_err(errors::humanize_error)?;
-  let user_id = row.try_get("user_id").map_err(errors::humanize_error)?;
-  let name = row.try_get("user_name").map_err(errors::humanize_error)?;
-  let invited_by = row.try_get("invited_by").map_err(errors::humanize_error)?;
-  let joined_at = row.try_get("joined_at").map_err(errors::humanize_error)?;
-  let left_at = row.try_get("left_at").map_err(errors::humanize_error)?;
+async fn load_games(context: &Context, id: &String) -> Result<Vec<interchange::http::LobbyGame>> {
+  let mut conn = context.records().q().await?;
 
-  Ok(interchange::http::LobbyMember {
-    member_id,
-    user_id,
-    name,
-    invited_by,
-    joined_at,
-    left_at,
-  })
-}
-
-pub fn load_games(context: &Context, id: &String) -> Result<Vec<interchange::http::LobbyGame>> {
-  let rows = context.records().query(GAMES_FOR_LOBBY, &[id])?;
-  debug!("found {} game rows", rows.len());
-  rows
-    .iter()
+  query_file!("src/routes/lobbies/data-store/load-lobby-games.sql", id)
+    .fetch_all(&mut conn)
+    .await
+    .map_err(errors::humanize_error)?
+    .into_iter()
     .map(|row| {
-      let id = row.try_get("game_id").map_err(errors::humanize_error)?;
-      let created = row.try_get("created_at").map_err(errors::humanize_error)?;
-      let ended = row.try_get("ended_at").map_err(errors::humanize_error)?;
-      let name = row.try_get("game_name").map_err(errors::humanize_error)?;
-      let rounds_remaining = row.try_get("round_count").map_err(errors::humanize_error)?;
-      Ok(interchange::http::LobbyGame {
-        id,
-        created,
-        ended,
-        name,
-        rounds_remaining,
+      Ok::<_, std::io::Error>(interchange::http::LobbyGame {
+        id: row.game_id,
+        created: row
+          .created_at
+          .ok_or(errors::e("Unable to parse game created at timestamp"))?,
+        ended: row.ended_at,
+        name: row.game_name,
+        rounds_remaining: row
+          .round_count
+          .ok_or(errors::e("Unable to parse game round count"))?,
       })
     })
     .collect()
 }
 
-pub fn load_members(context: &Context, id: &String) -> Result<Vec<interchange::http::LobbyMember>> {
-  let rows = context.records().query(LOAD_LOBBY_MEMBERS, &[id])?;
-  debug!("found {} member rows", rows.len());
-  rows.iter().map(parse_member_row).collect()
+struct LobbyDetailRow {
+  pub id: String,
+  pub name: String,
+  pub created: DateTime<Utc>,
+}
+
+async fn lobby_details_for_user(
+  context: &Context,
+  lobby_id: &String,
+  user_id: &String,
+) -> Result<Option<LobbyDetailRow>> {
+  let mut conn = context.records().q().await?;
+  let details = query_file!(
+    "src/routes/lobbies/data-store/load-lobby-detail.sql",
+    lobby_id,
+    user_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(errors::humanize_error)?
+  .into_iter()
+  .nth(0)
+  .and_then(|row| {
+    Some(LobbyDetailRow {
+      id: row.lobby_id,
+      name: row.lobby_name,
+      created: row.created_at?,
+    })
+  });
+
+  Ok(details)
+}
+
+async fn load_members(
+  context: &Context,
+  id: &String,
+) -> Result<Vec<interchange::http::LobbyMember>> {
+  let mut conn = context.records().q().await?;
+  query_file!("src/routes/lobbies/data-store/load-lobby-members.sql", id)
+    .fetch_all(&mut conn)
+    .await
+    .map_err(errors::humanize_error)?
+    .into_iter()
+    .map(|row| {
+      Ok(interchange::http::LobbyMember {
+        member_id: row.member_id,
+        user_id: row.user_id,
+        name: row.user_name,
+        invited_by: row.invited_by,
+        joined_at: row.joined_at,
+        left_at: row.left_at,
+      })
+    })
+    .collect()
 }
 
 pub async fn details(context: &Context, id: &String) -> Result<Response> {
@@ -78,40 +106,24 @@ pub async fn details(context: &Context, id: &String) -> Result<Response> {
   };
 
   debug!("looking for loby via '{}' for user '{}'", id, uid);
+  let deets = match lobby_details_for_user(context, id, uid).await? {
+    Some(details) => details,
+    None => return Ok(Response::not_found().cors(context.cors())),
+  };
 
-  context
-    .records()
-    .query(LOAD_LOBBY_DETAILS, &[&id, &uid])?
-    .iter()
-    .nth(0)
-    .map(|row| {
-      let id = row.try_get("lobby_id").map_err(errors::humanize_error)?;
-      let name = row.try_get("lobby_name").map_err(errors::humanize_error)?;
-      let _created = row
-        .try_get::<_, DateTime<Utc>>("created_at")
-        .map_err(errors::humanize_error)?;
-
-      let matches = row
-        .try_get::<_, i64>("member_count")
-        .map_err(errors::humanize_error)?;
-
-      if matches == 0 {
-        debug!("user '{}' is not a member of lobby '{}'", uid, id);
-        return Ok(Response::not_found().cors(context.cors()));
-      }
-
-      debug!("found match for lobby '{}' details, loading members", name);
-      let members = load_members(&context, &id)?;
-      let games = load_games(&context, &id)?;
-      let details = interchange::http::LobbyDetails {
-        id,
-        name,
-        members,
-        games,
-      };
-      Ok(Response::ok_json(&details)?.cors(context.cors()))
-    })
-    .unwrap_or_else(|| Ok(Response::not_found().cors(context.cors())))
+  debug!(
+    "found match for lobby '{}' details, loading members",
+    deets.name
+  );
+  let members = load_members(&context, &id).await?;
+  let games = load_games(&context, &id).await?;
+  let details = interchange::http::LobbyDetails {
+    id: deets.id,
+    name: deets.name,
+    members,
+    games,
+  };
+  Ok(Response::ok_json(&details)?.cors(context.cors()))
 }
 
 pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
@@ -129,53 +141,30 @@ pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
   }
 
   debug!("loading lobbies for user '{}'", uid);
+  let mut conn = context.records().q().await?;
 
-  let lobbies = context
-    .records()
-    .query(LOBBY_FOR_USER, &[&uid])?
-    .iter()
-    .filter_map(|row| {
-      let id = row.try_get::<_, String>(0).ok()?;
-      let name = row.try_get::<_, String>(1).ok()?;
-      let created = row
-        .try_get::<_, DateTime<Utc>>(2)
-        .map_err(|e| {
-          warn!("unable to parse game created - {}", e);
-          e
-        })
-        .ok()?;
-
-      let member_count = row
-        .try_get::<_, i64>(3)
-        .map_err(|e| {
-          warn!("unable to parse member count column - {}", e);
-          e
-        })
-        .ok()?;
-
-      let game_count = row
-        .try_get::<_, i64>(4)
-        .map_err(|e| {
-          warn!("unable to parse game count column - {}", e);
-          e
-        })
-        .ok()?;
-
-      debug!("found lobby '{}'", id);
-
-      Some(interchange::http::LobbyListLobby {
-        id,
-        name,
-        created,
-        game_count,
-        member_count,
+  query_file!("src/routes/lobbies/data-store/lobbies-for-user.sql", uid)
+    .fetch_all(&mut conn)
+    .await
+    .map_err(errors::humanize_error)?
+    .into_iter()
+    .map(|row| {
+      Ok::<_, std::io::Error>(interchange::http::LobbyListLobby {
+        id: row.lobby_id,
+        name: row.lobby_name,
+        created: row
+          .created_at
+          .ok_or_else(|| errors::e("Unable to parse created_at for lobby"))?,
+        game_count: row
+          .game_count
+          .ok_or_else(|| errors::e("Unable to parse game count for lobby"))?,
+        member_count: row
+          .member_count
+          .ok_or_else(|| errors::e("Unable to parse member count for lobby"))?,
       })
     })
-    .collect();
-
-  debug!("finished collecting lobbies - {:?}", lobbies);
-
-  Response::ok_json(interchange::http::LobbyList { lobbies })
+    .collect::<Result<Vec<interchange::http::LobbyListLobby>>>()
+    .and_then(|lobbies| Response::ok_json(interchange::http::LobbyList { lobbies }))
     .map(|response| response.cors(context.cors()))
 }
 

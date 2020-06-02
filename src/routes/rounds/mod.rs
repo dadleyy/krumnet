@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use log::{debug, warn};
+use sqlx::query_file;
 use std::io::{Error, Result};
 
 use crate::{
@@ -8,13 +9,51 @@ use crate::{
   interchange, Authority, Context, Response,
 };
 
-const LOAD_ROUND_DETAILS: &'static str = include_str!("data-store/load-round-details.sql");
-const LOAD_ENTRIES: &'static str = include_str!("data-store/load-round-entries.sql");
-const LOAD_RESULTS: &'static str = include_str!("data-store/load-round-results.sql");
-
 fn log_err<E: std::error::Error>(error: E) -> Error {
   warn!("error - {}", error);
   errors::humanize_error(error)
+}
+
+struct RoundDetailRow {
+  id: String,
+  prompt: Option<String>,
+  position: i32,
+  created: DateTime<Utc>,
+  completed: Option<DateTime<Utc>>,
+  started: Option<DateTime<Utc>>,
+  fulfilled: Option<DateTime<Utc>>,
+}
+
+async fn round_details(
+  context: &Context,
+  user_id: &String,
+  round_id: &String,
+) -> Result<RoundDetailRow> {
+  let mut conn = context.records().q().await?;
+  query_file!(
+    "src/routes/rounds/data-store/load-round-details.sql",
+    user_id,
+    round_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(log_err)?
+  .into_iter()
+  .nth(0)
+  .map(|row| {
+    Ok(RoundDetailRow {
+      id: row.round_id,
+      prompt: row.prompt,
+      position: row.pos,
+      created: row
+        .created_at
+        .ok_or_else(|| errors::e("Unable to parse round created timestamp"))?,
+      completed: row.completed_at,
+      started: row.started_at,
+      fulfilled: row.fulfilled_at,
+    })
+  })
+  .unwrap_or_else(|| Err(errors::e(format!("Unable to find round '{}'", round_id))))
 }
 
 pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
@@ -32,101 +71,92 @@ pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
 
   let rid = ids.iter().nth(0).ok_or(errors::e("invalid id"))?;
   debug!("attempting to find round from single id - {:?}", rid);
+  let RoundDetailRow {
+    id,
+    prompt,
+    position,
+    created,
+    fulfilled,
+    completed,
+    started,
+  } = round_details(context, &uid, &rid).await?;
 
-  context
-    .records()
-    .query(LOAD_ROUND_DETAILS, &[&uid, &rid])?
-    .iter()
-    .nth(0)
-    .map_or(Ok(Response::not_found().cors(context.cors())), |row| {
-      let id = row.try_get("round_id").map_err(log_err)?;
-      let prompt = row.try_get("prompt").map_err(log_err)?;
-      let position = row.try_get::<_, i32>("pos").map_err(log_err)? as u32;
-      let created = row.try_get("created_at").map_err(log_err)?;
-      let completed = row.try_get("completed_at").map_err(log_err)?;
-      let started = row.try_get("started_at").map_err(log_err)?;
-      let fulfilled = row.try_get("fulfilled_at").map_err(log_err)?;
+  debug!("found round row '{}', parsing into response", id);
+  let entries = entries_for_round(context, &uid, &id).await?;
+  let results = results_for_round(context, &id).await?;
 
-      debug!("found round row '{}', parsing into response", id);
-      let entries = entries_for_round(context, &uid, &id)?;
-      let results = results_for_round(context, &id)?;
+  let details = interchange::http::GameRoundDetails {
+    id,
+    entries,
+    results,
+    position,
+    fulfilled,
+    prompt,
+    created,
+    completed,
+    started,
+  };
 
-      let details = interchange::http::GameRoundDetails {
-        id,
-        entries,
-        results,
-        position,
-        fulfilled,
-        prompt,
-        created,
-        completed,
-        started,
-      };
-      Response::ok_json(details).map(|res| res.cors(context.cors()))
-    })
+  Response::ok_json(details).map(|res| res.cors(context.cors()))
 }
 
-fn results_for_round(
+async fn results_for_round(
   context: &Context,
   round_id: &String,
 ) -> Result<Vec<interchange::http::GameRoundPlacement>> {
-  context
-    .records()
-    .query(LOAD_RESULTS, &[round_id])?
-    .into_iter()
-    .map(|row| {
-      let id = row.try_get("result_id").map_err(log_err)?;
-      let user_name = row.try_get("user_name").map_err(log_err)?;
-      let user_id = row.try_get("user_id").map_err(log_err)?;
-      let place = row.try_get("round_place").map_err(log_err)?;
-      Ok(interchange::http::GameRoundPlacement {
-        id,
-        user_name,
-        user_id,
-        place,
-      })
+  let mut conn = context.records().q().await?;
+
+  query_file!(
+    "src/routes/rounds/data-store/load-round-results.sql",
+    round_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(log_err)?
+  .into_iter()
+  .map(|row| {
+    Ok(interchange::http::GameRoundPlacement {
+      id: row.result_id,
+      user_name: row.user_name,
+      user_id: row.user_id,
+      place: row.round_place,
     })
-    .collect()
+  })
+  .collect()
 }
 
-fn entries_for_round(
+async fn entries_for_round(
   context: &Context,
   active_user_id: &String,
   round_id: &String,
 ) -> Result<Vec<interchange::http::GameRoundEntry>> {
-  context
-    .records()
-    .query(LOAD_ENTRIES, &[round_id])?
-    .iter()
-    .map(|row| {
-      let id = row.try_get("entry_id").map_err(log_err)?;
-      let round_id = row.try_get("round_id").map_err(log_err)?;
-      let member_id = row.try_get("member_id").map_err(log_err)?;
-      let created = row
-        .try_get::<_, DateTime<Utc>>("created_at")
-        .map_err(log_err)?;
-      let user_id = row.try_get("user_id").map_err(log_err)?;
-      let user_name = row.try_get("user_name").map_err(log_err)?;
-      let fulfilled = row
-        .try_get::<_, Option<DateTime<Utc>>>("fulfilled")
-        .map_err(log_err)?;
+  let mut conn = context.records().q().await?;
+  query_file!(
+    "src/routes/rounds/data-store/load-round-entries.sql",
+    round_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(log_err)?
+  .into_iter()
+  .map(|row| {
+    let fulfilled = row.fulfilled;
+    let entry = match (&row.user_id == active_user_id) || fulfilled.is_some() {
+      true => row.entry,
+      false => None,
+    };
 
-      let entry = match (&user_id == active_user_id) || fulfilled.is_some() {
-        true => Some(row.try_get("entry").map_err(log_err)?),
-        false => None,
-      };
-
-      debug!("found round entry '{}'", id);
-
-      Ok(interchange::http::GameRoundEntry {
-        id,
-        round_id,
-        entry,
-        member_id,
-        created,
-        user_id,
-        user_name,
-      })
+    Ok(interchange::http::GameRoundEntry {
+      id: row.entry_id,
+      round_id: row.round_id,
+      member_id: row.member_id,
+      created: row
+        .created_at
+        .ok_or_else(|| errors::e("Unable to load round entry created timestamp"))?,
+      user_id: row.user_id,
+      user_name: row.user_name,
+      entry,
     })
-    .collect()
+  })
+  .collect()
 }

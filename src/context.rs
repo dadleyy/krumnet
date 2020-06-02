@@ -1,12 +1,11 @@
 use async_std::sync::Arc;
 use elaine::Head;
 use log::{info, warn};
+use sqlx::query_file;
 use std::io::Result;
 
 use crate::http::AUTHORIZATION;
 use crate::{errors, Authority, Configuration, JobStore, RecordStore, SessionStore};
-
-const USER_FOR_SESSION: &'static str = include_str!("data-store/user-for-session.sql");
 
 pub struct Context {
   _auth: Authority,
@@ -73,14 +72,17 @@ pub async fn load_authorization(
   records: &RecordStore,
 ) -> Result<Authority> {
   let uid = session.get(&token).await?;
-  let tenant = records
-    .query(USER_FOR_SESSION, &[&uid])?
-    .iter()
+  let mut conn = records.q().await?;
+  let tenant = query_file!("src/data-store/user-for-session.sql", uid)
+    .fetch_all(&mut conn)
+    .await
+    .map_err(errors::humanize_error)?
+    .into_iter()
     .nth(0)
     .and_then(|row| {
-      let id = row.try_get("user_id").ok()?;
-      let name = row.try_get::<_, String>("user_name").ok()?;
-      let email = row.try_get::<_, String>("user_email").ok()?;
+      let id = row.user_id;
+      let name = row.user_name;
+      let email = row.user_email;
 
       info!("found user '{:?}' {:?} {:?}", id, name, email);
 

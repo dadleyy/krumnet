@@ -1,9 +1,9 @@
 select
-  lobbies.id,
-  lobbies.name,
-  lobbies.created_at,
-  count(distinct memberships.id) member_count,
-  count(distinct games.id) game_count
+  lobbies.id                     as lobby_id,
+  lobbies.name                   as lobby_name,
+  lobbies.created_at             as created_at,
+  count(distinct memberships.id) as member_count,
+  count(distinct games.id)       as game_count
 from
   krumnet.lobbies as lobbies
 left join

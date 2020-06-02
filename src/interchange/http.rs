@@ -31,7 +31,7 @@ pub struct GameRoundDetails {
   pub entries: Vec<GameRoundEntry>,
   pub results: Vec<GameRoundPlacement>,
   pub prompt: Option<String>,
-  pub position: u32,
+  pub position: i32,
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
   pub started: Option<DateTime<Utc>>,
   #[serde(with = "chrono::serde::ts_milliseconds")]
@@ -64,7 +64,6 @@ pub struct LobbyList {
 pub struct GameMember {
   pub member_id: String,
   pub user_id: String,
-  pub email: String,
   pub name: String,
   #[serde(with = "chrono::serde::ts_milliseconds")]
   pub joined: DateTime<Utc>,
@@ -74,7 +73,7 @@ pub struct GameMember {
 #[serde(rename_all = "snake_case")]
 pub struct GameRound {
   pub id: String,
-  pub position: u32,
+  pub position: i32,
   pub prompt: Option<String>,
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
   pub started: Option<DateTime<Utc>>,

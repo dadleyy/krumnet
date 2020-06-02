@@ -1,6 +1,7 @@
 use isahc::HttpClient;
 use log::{debug, info, warn};
 use serde::Deserialize;
+use sqlx::query_file;
 use std::io::{Error, ErrorKind, Result};
 
 use crate::configuration::GoogleCredentials;
@@ -11,9 +12,6 @@ use crate::constants::{
 };
 use crate::http::{header, query as qs, Method, Request, Response, Uri, Url};
 use crate::{errors, Context};
-
-const FIND_USER: &'static str = include_str!("data-store/find-user-by-google-id.sql");
-const CREATE_USER: &'static str = include_str!("data-store/create-user.sql");
 
 // A TokenExchangePayload represents the response received from google oauth that contains the
 // authentication token that will be used in subsequent requests on behalf of this user.
@@ -99,7 +97,7 @@ async fn fetch_info(info: TokenExchangePayload) -> Result<UserInfoPayload> {
 
 // Given user information loaded from the api, attempt to save the information into the persistence
 // engine, returning the newly created system id if successful.
-fn make_user(details: &UserInfoPayload, context: &Context) -> Result<String> {
+async fn make_user(details: &UserInfoPayload, context: &Context) -> Result<String> {
   let UserInfoPayload {
     email,
     name,
@@ -107,49 +105,50 @@ fn make_user(details: &UserInfoPayload, context: &Context) -> Result<String> {
     picture: _,
   } = details;
 
-  context
-    .records()
-    .execute(CREATE_USER, &[&email, &name, &email, &name, &sub])?;
+  let mut conn = context.records().q().await?;
 
-  let tenant = context.records().query(FIND_USER, &[&sub])?;
+  query_file!(
+    "src/data-store/create-user.sql",
+    email,
+    name,
+    email,
+    name,
+    sub
+  )
+  .execute(&mut conn)
+  .await
+  .map_err(errors::humanize_error)?;
 
-  match tenant.iter().nth(0) {
-    Some(row) => match row.try_get::<_, String>("user_id") {
-      Ok(id) => Ok(id),
-      _ => Err(Error::new(
-        ErrorKind::Other,
-        "Found matching row, but unable to parse",
-      )),
-    },
-    _ => Err(Error::new(
-      ErrorKind::Other,
-      "Unable to find previously inserted user",
-    )),
-  }
+  query_file!("src/data-store/find-user-by-google-id.sql", sub)
+    .fetch_all(&mut conn)
+    .await
+    .map_err(errors::humanize_error)?
+    .into_iter()
+    .nth(0)
+    .map(|row| row.user_id)
+    .ok_or_else(|| errors::e("Unable to find recently created user"))
 }
 
 // Attempt to find a user based on the google account id returned. If none is found, attempt to
 // find by the email address and make sure to backfill the google account. If there is still no
 // matching user information, attempt to create a new user and google account.
-fn find_or_create_user(profile: &UserInfoPayload, context: &Context) -> Result<String> {
-  let tenant = context.records().query(FIND_USER, &[&profile.sub])?;
+async fn find_or_create_user(profile: &UserInfoPayload, context: &Context) -> Result<String> {
+  let mut conn = context.records().q().await?;
+  let id = query_file!("src/data-store/find-user-by-google-id.sql", profile.sub)
+    .fetch_all(&mut conn)
+    .await
+    .map_err(errors::humanize_error)?
+    .into_iter()
+    .nth(0)
+    .map(|row| row.user_id);
 
   info!("loaded user info: {:?}", profile);
 
-  match tenant.iter().nth(0) {
-    Some(row) => match row.try_get::<_, String>("user_id") {
-      Ok(id) => {
-        info!("found existing user {}", id);
-        Ok(id)
-      }
-      _ => Err(Error::new(
-        ErrorKind::Other,
-        "Unable to parse a valid id from matching row",
-      )),
-    },
+  match id {
+    Some(id) => Ok(id),
     None => {
       info!("no matching user, creating");
-      make_user(&profile, context)
+      make_user(&profile, context).await
     }
   }
 }
@@ -191,7 +190,7 @@ pub async fn callback(context: &Context, uri: &Uri) -> Result<Response> {
 
   info!("received oauth callback - {:?}", profile);
 
-  let uid = match find_or_create_user(&profile, context) {
+  let uid = match find_or_create_user(&profile, context).await {
     Ok(id) => id,
     Err(e) => {
       info!("[warning] unable to create/find user: {:?}", e);

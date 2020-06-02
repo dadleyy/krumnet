@@ -1,5 +1,5 @@
 select
-  users.id::text as user_id
+  users.id as user_id
 from
   krumnet.users as users
 inner join

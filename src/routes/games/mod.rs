@@ -3,24 +3,15 @@ use chrono::{DateTime, Utc};
 use log::{debug, info, warn};
 use serde::Deserialize;
 use serde_json::from_slice as deserialize;
+use sqlx::query_file;
 use std::io::Result;
 use std::marker::Unpin;
 
 use crate::{
   errors,
   http::{query_values, Uri},
-  interchange, read_size_async,
-  routes::lobbies::LOAD_LOBBY_DETAILS,
-  Authority, Context, Response,
+  interchange, read_size_async, Authority, Context, Response,
 };
-
-const LOAD_GAME: &'static str = include_str!("data-store/load-game-details.sql");
-const LOAD_MEMBERS: &'static str = include_str!("data-store/load-game-members.sql");
-const LOAD_ROUNDS: &'static str = include_str!("data-store/load-rounds.sql");
-const LOAD_PLACEMENTS: &'static str = include_str!("data-store/load-placements.sql");
-const GAME_FOR_ENTRY: &'static str = include_str!("data-store/game-for-entry-creation.sql");
-const CREATE_ENTRY: &'static str = include_str!("data-store/create-round-entry.sql");
-const CREATE_VOTE: &'static str = include_str!("data-store/create-round-entry-vote.sql");
 
 #[derive(Debug, Deserialize)]
 struct EntryVotePayload {
@@ -45,19 +36,22 @@ pub async fn create_entry_vote<R: AsyncRead + Unpin>(
     authority.user_id, payload.entry_id, authority.round_id
   );
 
-  let attempt = context
-    .records()
-    .query(CREATE_VOTE, &[&payload.entry_id, &authority.member_id])?
-    .into_iter()
-    .nth(0)
-    .map(|row| {
-      row
-        .try_get::<_, String>("id")
-        .map_err(errors::humanize_error)
-    });
+  let mut conn = context.records().q().await?;
+
+  let attempt = query_file!(
+    "src/routes/games/data-store/create-round-entry-vote.sql",
+    payload.entry_id,
+    authority.member_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(errors::humanize_error)?
+  .into_iter()
+  .nth(0)
+  .map(|row| row.id);
 
   let vote_id = match attempt {
-    Some(e) => e?,
+    Some(e) => e,
     None => return Ok(Response::not_found().cors(context.cors())),
   };
 
@@ -88,26 +82,27 @@ async fn authority_for_round(
   round_id: &String,
   user_id: &String,
 ) -> Result<RoundAuthority> {
-  context
-    .records()
-    .query(GAME_FOR_ENTRY, &[round_id, user_id])?
-    .into_iter()
-    .nth(0)
-    .map(|row| {
-      let lobby_id = row.try_get("lobby_id").map_err(errors::humanize_error)?;
-      let game_id = row.try_get("game_id").map_err(errors::humanize_error)?;
-      let member_id = row.try_get("member_id").map_err(errors::humanize_error)?;
-      let user_id = row.try_get("user_id").map_err(errors::humanize_error)?;
-      let round_id = row.try_get("round_id").map_err(errors::humanize_error)?;
-      Ok(RoundAuthority {
-        lobby_id,
-        game_id,
-        member_id,
-        user_id,
-        round_id,
-      })
+  let mut conn = context.records().q().await?;
+  query_file!(
+    "src/routes/games/data-store/game-for-entry-creation.sql",
+    round_id,
+    user_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(errors::humanize_error)?
+  .into_iter()
+  .nth(0)
+  .map(|row| {
+    Ok(RoundAuthority {
+      lobby_id: row.lobby_id,
+      game_id: row.game_id,
+      member_id: row.member_id,
+      user_id: row.user_id,
+      round_id: row.round_id,
     })
-    .unwrap_or(Err(errors::e("unauthorized")))
+  })
+  .unwrap_or_else(|| Err(errors::e("Unauthorized")))
 }
 
 #[derive(Debug, Deserialize)]
@@ -128,29 +123,22 @@ pub async fn create_entry<R: AsyncRead + Unpin>(
   let contents = read_size_async(reader, context.pending()).await?;
   let payload = deserialize::<EntryPayload>(&contents)?;
   let authority = authority_for_round(context, &payload.round_id, &uid).await?;
-
-  let created = context
-    .records()
-    .query(
-      CREATE_ENTRY,
-      &[
-        &authority.round_id,
-        &authority.member_id,
-        &payload.entry,
-        &authority.game_id,
-        &authority.lobby_id,
-        &authority.user_id,
-      ],
-    )
-    .map_err(log_err)?
-    .iter()
-    .nth(0)
-    .and_then(|row| {
-      let entry_id = row.try_get::<_, String>(0).map_err(log_err).ok()?;
-      let entry = row.try_get::<_, String>(1).map_err(log_err).ok()?;
-      let round_id = row.try_get::<_, String>(2).map_err(log_err).ok()?;
-      Some((entry_id, entry, round_id))
-    });
+  let mut conn = context.records().q().await?;
+  let created = query_file!(
+    "src/routes/games/data-store/create-round-entry.sql",
+    authority.round_id,
+    authority.member_id,
+    payload.entry,
+    authority.game_id,
+    authority.lobby_id,
+    authority.user_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(errors::humanize_error)?
+  .into_iter()
+  .nth(0)
+  .and_then(|row| Some((row.entry_id, row.entry, row.round_id)));
 
   debug!("creating round entry for user '{}' - {:?}", uid, created);
 
@@ -190,61 +178,51 @@ fn log_err<E: std::error::Error>(error: E) -> E {
   error
 }
 
-fn members_for_game(context: &Context, id: &String) -> Result<Vec<interchange::http::GameMember>> {
-  context
-    .records()
-    .query(LOAD_MEMBERS, &[&id])?
-    .iter()
-    .map(|r| {
-      let member_id = r.try_get("member_id").map_err(errors::humanize_error)?;
-      let joined = r.try_get("created_at").map_err(errors::humanize_error)?;
-      let user_id = r.try_get("user_id").map_err(errors::humanize_error)?;
-      let email = r.try_get("user_email").map_err(errors::humanize_error)?;
-      let name = r.try_get("user_name").map_err(errors::humanize_error)?;
+async fn members_for_game(
+  context: &Context,
+  id: &String,
+) -> Result<Vec<interchange::http::GameMember>> {
+  let mut conn = context.records().q().await?;
 
-      debug!("found member '{}'", id);
-
+  query_file!("src/routes/games/data-store/load-game-members.sql", id)
+    .fetch_all(&mut conn)
+    .await
+    .map_err(errors::humanize_error)?
+    .into_iter()
+    .map(|row| {
       Ok(interchange::http::GameMember {
-        member_id,
-        user_id,
-        email,
-        name,
-        joined,
+        member_id: row.member_id,
+        user_id: row.user_id,
+        name: row.user_name,
+        joined: row
+          .created_at
+          .ok_or_else(|| errors::e(format!("Unable to parse game member created timestamp")))?,
       })
     })
     .collect()
 }
 
-fn rounds_for_game(context: &Context, id: &String) -> Result<Vec<interchange::http::GameRound>> {
-  context
-    .records()
-    .query(LOAD_ROUNDS, &[&id])?
-    .iter()
+async fn rounds_for_game(
+  context: &Context,
+  id: &String,
+) -> Result<Vec<interchange::http::GameRound>> {
+  let mut conn = context.records().q().await?;
+  query_file!("src/routes/games/data-store/load-rounds.sql", id)
+    .fetch_all(&mut conn)
+    .await
+    .map_err(errors::humanize_error)?
+    .into_iter()
     .map(|row| {
-      let id = row.try_get("id").map_err(errors::humanize_error)?;
-      let position = row
-        .try_get::<_, i32>("pos")
-        .map_err(errors::humanize_error)? as u32;
-      let prompt = row.try_get("prompt").map_err(errors::humanize_error)?;
-      let created = row.try_get("created_at").map_err(errors::humanize_error)?;
-      let started = row.try_get("started_at").map_err(errors::humanize_error)?;
-      let completed = row
-        .try_get("completed_at")
-        .map_err(errors::humanize_error)?;
-      let fulfilled = row
-        .try_get("fulfilled_at")
-        .map_err(errors::humanize_error)?;
-
-      debug!("found round '{}' ({:?}, {:?})", id, position, completed);
-
       Ok(interchange::http::GameRound {
-        id,
-        position,
-        prompt,
-        created,
-        started,
-        fulfilled,
-        completed,
+        id: row.id,
+        position: row.pos,
+        prompt: row.prompt,
+        created: row
+          .created_at
+          .ok_or_else(|| errors::e("Unable to parse round created at timestamp"))?,
+        started: row.started_at,
+        fulfilled: row.fulfilled_at,
+        completed: row.completed_at,
       })
     })
     .collect()
@@ -257,58 +235,68 @@ struct GameDetails {
   pub ended_at: Option<DateTime<Utc>>,
 }
 
-fn placements_for_game(
+async fn placements_for_game(
   context: &Context,
   game_id: &String,
 ) -> Result<Vec<interchange::http::GameDetailPlacement>> {
-  context
-    .records()
-    .query(LOAD_PLACEMENTS, &[game_id])?
+  let mut conn = context.records().q().await?;
+  query_file!("src/routes/games/data-store/load-placements.sql", game_id)
+    .fetch_all(&mut conn)
+    .await
+    .map_err(errors::humanize_error)?
     .into_iter()
     .map(|row| {
-      let id = row.try_get("id").map_err(errors::humanize_error)?;
-      let user_name = row.try_get("user_name").map_err(errors::humanize_error)?;
-      let user_id = row.try_get("user_id").map_err(errors::humanize_error)?;
-      let place = row.try_get("placement").map_err(errors::humanize_error)?;
-      debug!("found placement - '{}'", id);
       Ok(interchange::http::GameDetailPlacement {
-        id,
-        user_name,
-        user_id,
-        place,
+        id: row.id,
+        user_name: row.user_name,
+        user_id: row.user_id,
+        place: row.placement,
       })
     })
     .collect()
 }
 
 async fn find_game(context: &Context, uid: &String, gid: &String) -> Result<Response> {
-  let details = context
-    .records()
-    .query(LOAD_GAME, &[gid, uid])?
-    .iter()
-    .nth(0)
-    .map(|row| {
-      let game_id = row.try_get("game_id").map_err(errors::humanize_error)?;
-      let created_at = row.try_get("created_at").map_err(errors::humanize_error)?;
-      let name = row.try_get("game_name").map_err(errors::humanize_error)?;
-      let ended_at = row.try_get("ended_at").map_err(errors::humanize_error)?;
-      Ok(GameDetails {
-        game_id,
-        created_at,
-        name,
-        ended_at,
-      })
+  let mut conn = context.records().q().await?;
+  let details = query_file!(
+    "src/routes/games/data-store/load-game-details.sql",
+    gid,
+    uid
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(errors::humanize_error)?
+  .into_iter()
+  .nth(0)
+  .map(|row| {
+    Ok(GameDetails {
+      game_id: row.game_id,
+      created_at: row.created_at.ok_or_else(|| {
+        errors::e(format!(
+          "Unable to parse created timestamp for game '{}'",
+          gid
+        ))
+      })?,
+      name: row.game_name,
+      ended_at: row.ended_at,
     })
-    .unwrap_or(Err(errors::e("Unable to find game")))?;
+  })
+  .unwrap_or_else(|| Err(errors::e(format!("Unable to find game '{}'", gid))))?;
 
   debug!(
     "found game '{}', created '{:?}'",
     details.game_id, details.created_at
   );
 
-  let rounds = rounds_for_game(context, &details.game_id).map_err(log_err)?;
-  let members = members_for_game(context, &details.game_id).map_err(log_err)?;
-  let placements = placements_for_game(context, &details.game_id).map_err(log_err)?;
+  let rounds = rounds_for_game(context, &details.game_id)
+    .await
+    .map_err(log_err)?;
+  let members = members_for_game(context, &details.game_id)
+    .await
+    .map_err(log_err)?;
+  let placements = placements_for_game(context, &details.game_id)
+    .await
+    .map_err(log_err)?;
 
   let result = interchange::http::GameDetails {
     id: details.game_id.clone(),
@@ -349,16 +337,25 @@ where
     Authority::None => return Ok(Response::not_found().cors(context.cors())),
     Authority::User { id, .. } => id,
   };
+
   debug!("creating new game for user - {}", uid);
+
   let contents = read_size_async(reader, context.pending()).await?;
   let payload = deserialize::<CreatePayload>(&contents)?;
 
-  if let None = context
-    .records()
-    .query(LOAD_LOBBY_DETAILS, &[&payload.lobby_id, &uid])?
-    .iter()
-    .nth(0)
-  {
+  let mut conn = context.records().q().await?;
+  let maybe_lobby = query_file!(
+    "src/routes/lobbies/data-store/load-lobby-detail.sql",
+    payload.lobby_id,
+    uid
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(errors::humanize_error)?
+  .into_iter()
+  .nth(0);
+
+  if let None = maybe_lobby {
     warn!(
       "unable to find lobby '{}' for user '{}'",
       payload.lobby_id, uid

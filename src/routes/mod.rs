@@ -1,4 +1,5 @@
 use log::info;
+use sqlx::query_file;
 use std::io::Result;
 
 pub mod games;
@@ -9,17 +10,7 @@ pub mod rounds;
 
 use crate::http::{query as qs, Uri};
 use crate::interchange::http::{SessionData, SessionUserData};
-use crate::records::Row;
-use crate::{Authority, Context, Response};
-
-const USER_FOR_SESSION: &'static str = include_str!("../data-store/load-user-for-session.sql");
-
-pub fn parse_user_session_query(row: Row) -> Option<SessionUserData> {
-  let id = row.try_get("user_id").ok()?;
-  let name = row.try_get("user_name").ok()?;
-  let email = row.try_get("user_email").ok()?;
-  Some(SessionUserData { id, email, name })
-}
+use crate::{errors, Authority, Context, Response};
 
 pub async fn destroy(context: &Context, uri: &Uri) -> Result<Response> {
   let token = match context.authority() {
@@ -45,15 +36,21 @@ pub async fn identify(context: &Context) -> Result<Response> {
   };
 
   info!("loading sesison for user {}", uid);
+  let mut conn = context.records().q().await?;
 
-  let tenant = context
-    .records()
-    .query(USER_FOR_SESSION, &[&uid])
-    .ok()
-    .and_then(|mut rows| rows.pop())
-    .and_then(parse_user_session_query)
-    .map(|user| SessionData { user });
-
-  info!("loaded sesison data for '{}' (payload {:?})", uid, tenant);
-  Response::ok_json(&tenant).map(|r| r.cors(context.cors()))
+  query_file!("src/data-store/user-for-session.sql", uid)
+    .fetch_all(&mut conn)
+    .await
+    .map_err(errors::humanize_error)?
+    .into_iter()
+    .nth(0)
+    .map(|row| SessionData {
+      user: SessionUserData {
+        id: row.user_id,
+        name: row.user_name,
+        email: row.user_email,
+      },
+    })
+    .ok_or_else(|| errors::e("Not found"))
+    .and_then(|tenant| Response::ok_json(&tenant).map(|r| r.cors(context.cors())))
 }

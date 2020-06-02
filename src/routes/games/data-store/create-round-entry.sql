@@ -5,4 +5,9 @@ with new_entry as (
   values
     ($1, $2, $3, $4, $5, $6)
   returning *
-) select id, entry, round_id from new_entry;
+) select
+  id       as entry_id,
+  entry    as entry,
+  round_id as round_id
+from
+  new_entry;

@@ -20,7 +20,6 @@ path = "src/bin/kruwk/main.rs"
 
 [dependencies]
 async-std = "^1.0"
-bit-vec = "^0.6"
 rand = "^0.7"
 
 # url has better ergonomics for serializing + deserializing urls
@@ -34,18 +33,12 @@ isahc = "^0.9"
 log = "^0.4"
 env_logger = "^0.7"
 elaine = "^1.0"
-r2d2_postgres = "^0.16"
-r2d2 = "^0.8"
 jsonwebtoken = "^7.1.0"
 dotenv = "^0.15"
 
 [dependencies.sqlx]
 version = "^0.3"
 features = ["postgres", "chrono", "macros"]
-
-[dependencies.postgres]
-version = "^0.17.3"
-features = ["with-bit-vec-0_6", "with-chrono-0_4"]
 
 [dependencies.kramer]
 version = "^1.0.1"
@@ -65,7 +58,6 @@ features = ["serde"]
 
 [dev-dependencies]
 mockito = "^0.25"
-
 
 [profile.release]
 codegen-units = 1
