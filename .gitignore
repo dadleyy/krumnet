@@ -1,5 +1,6 @@
 /target
 .env
+.env.bak
 **/*.rs.bk
 /vendor
 /krumnet-config.json
