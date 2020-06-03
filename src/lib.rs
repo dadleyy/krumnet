@@ -28,6 +28,7 @@ pub mod oauth;
 pub mod records;
 pub mod routes;
 pub mod session;
+pub mod version;
 
 pub use crate::authority::Authority;
 pub use crate::configuration::{Configuration, GoogleCredentials};
@@ -40,12 +41,14 @@ pub use crate::session::Session as SessionStore;
 #[derive(Serialize)]
 struct HealthCheckData {
   time: SystemTime,
+  version: String,
 }
 
 impl Default for HealthCheckData {
   fn default() -> Self {
     HealthCheckData {
       time: SystemTime::now(),
+      version: version::version(),
     }
   }
 }
@@ -58,7 +61,7 @@ fn extract_parts(head: &Head) -> Result<(RequestMethod, String)> {
 
 async fn health_check(context: &Context) -> Result<Response> {
   info!("health check against context - '{:?}'", context);
-  Ok(Response::ok_json(HealthCheckData::default())?.cors(context.cors()))
+  Response::ok_json(HealthCheckData::default()).map(|r| r.cors(context.cors()))
 }
 
 // Called for each new connection to the server, this is where requests are routed.

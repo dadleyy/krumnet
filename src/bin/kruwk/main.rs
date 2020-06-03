@@ -1,11 +1,13 @@
 use async_std::task::block_on;
 use gumdrop::{parse_args_default_or_exit, Options as Gumdrop};
 use log::{debug, info, warn};
+use std::env::args;
 use std::io::Result;
+use std::process::exit;
 
 use krumnet::{
   interchange::jobs::{Job, QueuedJob},
-  Configuration, JobStore, RecordStore,
+  version, Configuration, JobStore, RecordStore,
 };
 
 mod context;
@@ -22,6 +24,9 @@ struct Options {
 
   #[options(help = "display the help text")]
   help: bool,
+
+  #[options(help = "display the version and exit")]
+  version: bool,
 }
 
 async fn execute<'a>(ctx: &Context<'a>, job: &QueuedJob) -> QueuedJob {
@@ -67,21 +72,26 @@ fn main() -> Result<()> {
 
   let opts = parse_args_default_or_exit::<Options>();
 
-  if opts.help {
-    info!("{}", Options::usage());
-    return Ok(());
+  if opts.version {
+    let args = args().collect::<Vec<_>>();
+    println!("{} version - {}", args[0], version::version());
+    exit(0);
   }
 
+  info!("starting worker process (version {})", version::version());
+
   block_on(async {
-    debug!("starting worker process, opening job store");
     let jobs = JobStore::open(&opts.config).await?;
     let records = RecordStore::open(&opts.config).await?;
+
     let ctx = Context {
       records: &records,
       jobs: &jobs,
     };
+
     let mut fails = 0;
-    debug!("job store successfully opened, starting dequeue");
+
+    info!("backend stores connected successfully, starting dequeue");
 
     loop {
       let next = jobs.dequeue().await;

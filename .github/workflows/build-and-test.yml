@@ -23,6 +23,7 @@ jobs:
     env:
       PGPASSWORD: postgres
       DATABASE_URL: postgresql://postgres:postgres@postgres/postgres
+      KRUMNET_VERSION: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v1
       - name: Apt update
@@ -48,13 +49,17 @@ jobs:
       - name: Rustup use beta
         run: rustup default beta
       - name: Build main
-        run: cargo build
+        run: cargo build --bin krumnet
       - name: Build worker
         run: cargo build --bin kruwk
       - name: Run tests
         run: cargo test --verbose -- --nocapture
         env:
           KRUMNET_TEST_CONFIG_FILE: ci/github-actions/krumnet-config.json
+      - name: Print worker version
+        run: ./target/debug/kruwk -v
+      - name: Print web version
+        run: ./target/debug/krumnet -v
   dist:
     runs-on: ubuntu-latest
     services:
@@ -72,6 +77,7 @@ jobs:
     env:
       PGPASSWORD: postgres
       DATABASE_URL: postgresql://postgres:postgres@postgres/postgres
+      KRUMNET_VERSION: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v2
       - name: Update apt
