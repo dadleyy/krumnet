@@ -35,7 +35,7 @@ pub use crate::configuration::{Configuration, GoogleCredentials};
 pub use crate::context::{Context, ContextBuilder};
 pub use crate::http::{read_size_async, Response, Uri};
 pub use crate::jobs::JobStore;
-pub use crate::records::RecordStore;
+pub use crate::records::{Connection as RecordConnection, RecordStore};
 pub use crate::session::Session as SessionStore;
 
 #[derive(Serialize)]

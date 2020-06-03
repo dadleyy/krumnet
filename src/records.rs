@@ -10,6 +10,8 @@ pub struct RecordStore {
   _pg: PgPool,
 }
 
+pub type Connection = PoolConnection<PgConnection>;
+
 impl RecordStore {
   pub async fn open(configuration: &Configuration) -> Result<Self> {
     let pg = PgPool::builder()
@@ -23,7 +25,7 @@ impl RecordStore {
     Ok(RecordStore { _pg: pg })
   }
 
-  pub async fn q(&self) -> Result<PoolConnection<PgConnection>> {
+  pub async fn q(&self) -> Result<Connection> {
     self._pg.acquire().await.map_err(errors::humanize_error)
   }
 }

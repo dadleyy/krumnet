@@ -15,6 +15,8 @@ mod handlers;
 
 pub use context::Context;
 
+use handlers::{game_memberships, games, lobbies, lobby_memberships};
+
 const MAX_WORKER_FAILS: u8 = 10;
 
 #[derive(Debug, Gumdrop)]
@@ -30,36 +32,22 @@ struct Options {
 }
 
 async fn execute<'a>(ctx: &Context<'a>, job: &QueuedJob) -> QueuedJob {
-  match &job.job {
-    Job::CheckRoundFulfillment(details) => QueuedJob {
-      id: job.id.clone(),
-      job: handlers::games::check_round_fullfillment(&details, &ctx.records).await,
-    },
+  let job_result = match &job.job {
+    Job::CheckRoundFulfillment(details) => {
+      games::check_round_fullfillment(&details, &ctx.records).await
+    }
+    Job::CreateLobby(details) => lobbies::create_lobby(&job.id, &details, &ctx.records).await,
+    Job::CleanupLobbyMembership(details) => {
+      lobby_memberships::cleanup(&job.id, &details, &ctx).await
+    }
+    Job::CreateGame(details) => lobbies::create_game(&job.id, &details, &ctx.records).await,
+    Job::CleanupGameMembership(details) => game_memberships::cleanup(&details, &ctx).await,
+    Job::CheckRoundCompletion(details) => games::check_round_completion(&details, &ctx).await,
+  };
 
-    Job::CreateLobby(details) => QueuedJob {
-      id: job.id.clone(),
-      job: handlers::lobbies::create_lobby(&job.id, &details, &ctx.records).await,
-    },
-
-    Job::CleanupLobbyMembership(details) => QueuedJob {
-      id: job.id.clone(),
-      job: handlers::lobby_memberships::cleanup(&job.id, &details, &ctx).await,
-    },
-
-    Job::CreateGame(details) => QueuedJob {
-      id: job.id.clone(),
-      job: handlers::lobbies::create_game(&job.id, &details, &ctx.records).await,
-    },
-
-    Job::CleanupGameMembership(details) => QueuedJob {
-      id: job.id.clone(),
-      job: handlers::game_memberships::cleanup(&details, &ctx).await,
-    },
-
-    Job::CheckRoundCompletion(details) => QueuedJob {
-      id: job.id.clone(),
-      job: handlers::games::check_round_completion(&details, &ctx).await,
-    },
+  QueuedJob {
+    id: job.id.clone(),
+    job: job_result,
   }
 }
 
@@ -106,7 +94,7 @@ fn main() -> Result<()> {
           fails = 0;
         }
         Ok(None) => {
-          debug!("nothing to work off, skppping");
+          info!("nothing to work off, skppping");
           fails = 0;
         }
         Err(e) => {

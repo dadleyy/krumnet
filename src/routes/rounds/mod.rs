@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use log::{debug, warn};
+use log::{debug, info, warn};
 use sqlx::query_file;
 use std::io::{Error, Result};
 
@@ -84,11 +84,13 @@ pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
   debug!("found round row '{}', parsing into response", id);
   let entries = entries_for_round(context, &uid, &id).await?;
   let results = results_for_round(context, &id).await?;
+  let votes = votes_for_round(context, &id).await?;
 
   let details = interchange::http::GameRoundDetails {
     id,
     entries,
     results,
+    votes,
     position,
     fulfilled,
     prompt,
@@ -98,6 +100,34 @@ pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
   };
 
   Response::ok_json(details).map(|res| res.cors(context.cors()))
+}
+
+async fn votes_for_round(
+  context: &Context,
+  round_id: &String,
+) -> Result<Vec<interchange::http::GameRoundVote>> {
+  let mut conn = context.records_connection().await?;
+  info!("loading votes for round '{}'", round_id);
+  query_file!(
+    "src/routes/rounds/data-store/load-round-votes.sql",
+    round_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(log_err)?
+  .into_iter()
+  .map(|row| {
+    Ok(interchange::http::GameRoundVote {
+      id: row.vote_id,
+      entry_id: row.entry_id,
+      member_id: row.member_id,
+      user_id: row.user_id,
+      created: row
+        .created
+        .ok_or(errors::e("Unable to parse vote created timestamp"))?,
+    })
+  })
+  .collect()
 }
 
 async fn results_for_round(

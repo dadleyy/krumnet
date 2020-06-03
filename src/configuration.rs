@@ -142,6 +142,8 @@ pub struct JobStoreConfiguration {
   pub map_key: String,
   #[serde(default)]
   pub redis_uri: String,
+  #[serde(default)]
+  pub queue_delay: u64,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

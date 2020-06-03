@@ -13,6 +13,11 @@ use crate::Configuration;
 pub struct JobStore {
   _stream: RwLock<TcpStream>,
   _keys: (String, String, String),
+  _queue_delay: u64,
+}
+
+fn dequeue_cmd(queue_key: &String, delay: u64) -> Command<&str, &str> {
+  Command::List::<_, &str>(ListCommand::Pop(Side::Left, queue_key, Some((None, delay))))
 }
 
 impl JobStore {
@@ -27,7 +32,7 @@ impl JobStore {
 
   async fn dequeue_next_id(&self) -> Result<Option<String>> {
     let (queue_key, _, _) = &self._keys;
-    let cmd = Command::List::<_, &str>(ListCommand::Pop(Side::Left, queue_key, Some((None, 10))));
+    let cmd = dequeue_cmd(queue_key, self._queue_delay);
     let res = self.command(&cmd).await?;
 
     match res {
@@ -140,9 +145,16 @@ impl JobStore {
       &configuration.job_store.dequeue_key,
     );
 
+    let delay = if configuration.job_store.queue_delay > 0 {
+      configuration.job_store.queue_delay
+    } else {
+      10
+    };
+
     info!("job store ready, queue[{}] map[{}]", queue, map);
 
     Ok(JobStore {
+      _queue_delay: delay,
       _stream: RwLock::new(stream),
       _keys: (queue.clone(), map.clone(), dequeue.clone()),
     })

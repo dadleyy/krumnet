@@ -1,8 +1,9 @@
 select
-  placements.id    as id,
-  placements.place as placement,
-  users.name       as user_name,
-  users.id         as user_id
+  placements.id         as id,
+  placements.place      as placement,
+  placements.vote_count as vote_count,
+  users.name            as user_name,
+  users.id              as user_id
 from
   krumnet.game_member_placement_results as placements
 left join
@@ -10,4 +11,6 @@ left join
 on
   users.id = placements.user_id
 where
-  placements.game_id = $1;
+  placements.game_id = $1
+order by
+  placements.place asc;

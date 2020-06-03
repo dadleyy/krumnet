@@ -63,7 +63,10 @@ async fn round_completion_result(
   .await
   .map_err(warn_and_stringify)?;
 
-  info!("creating round '{}' placement results", details.round_id);
+  info!(
+    "creating round placement results for '{}'",
+    details.round_id
+  );
 
   query_file!(
     "src/bin/kruwk/handlers/games/data-store/create-round-placements.sql",

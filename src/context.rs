@@ -5,7 +5,9 @@ use sqlx::query_file;
 use std::io::Result;
 
 use crate::http::AUTHORIZATION;
-use crate::{errors, Authority, Configuration, JobStore, RecordStore, SessionStore};
+use crate::{
+  errors, Authority, Configuration, JobStore, RecordConnection, RecordStore, SessionStore,
+};
 
 pub struct Context {
   _auth: Authority,
@@ -39,6 +41,10 @@ impl Context {
 
   pub fn records(&self) -> &RecordStore {
     &self._records
+  }
+
+  pub async fn records_connection(&self) -> Result<RecordConnection> {
+    self._records.q().await
   }
 
   pub fn config(&self) -> &Configuration {

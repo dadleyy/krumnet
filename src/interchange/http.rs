@@ -26,10 +26,22 @@ pub struct GameRoundEntry {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub struct GameRoundVote {
+  pub id: String,
+  pub member_id: String,
+  pub user_id: String,
+  pub entry_id: String,
+  #[serde(with = "chrono::serde::ts_milliseconds")]
+  pub created: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub struct GameRoundDetails {
   pub id: String,
   pub entries: Vec<GameRoundEntry>,
   pub results: Vec<GameRoundPlacement>,
+  pub votes: Vec<GameRoundVote>,
   pub prompt: Option<String>,
   pub position: i32,
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
@@ -92,6 +104,7 @@ pub struct GameDetailPlacement {
   pub user_name: String,
   pub user_id: String,
   pub place: i32,
+  pub vote_count: i32,
 }
 
 #[derive(Debug, Serialize)]

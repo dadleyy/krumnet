@@ -251,6 +251,7 @@ async fn placements_for_game(
         user_name: row.user_name,
         user_id: row.user_id,
         place: row.placement,
+        vote_count: row.vote_count,
       })
     })
     .collect()

@@ -82,7 +82,8 @@ CREATE TABLE krumnet.game_member_placement_results (
     member_id character varying(255) NOT NULL,
     game_id character varying(255) NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
-    place integer NOT NULL
+    place integer NOT NULL,
+    vote_count integer DEFAULT 0 NOT NULL
 );
 
 
@@ -100,7 +101,8 @@ CREATE TABLE krumnet.game_member_round_placement_results (
     game_id character varying(255) NOT NULL,
     round_id character varying(255) NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
-    place integer NOT NULL
+    place integer NOT NULL,
+    vote_count integer DEFAULT 0 NOT NULL
 );
 
 
@@ -116,7 +118,6 @@ CREATE TABLE krumnet.game_memberships (
     lobby_id character varying(36) NOT NULL,
     lobby_member_id character varying(36) NOT NULL,
     game_id character varying(36) NOT NULL,
-    permissions bit(10) NOT NULL,
     created_at timestamp with time zone DEFAULT now(),
     left_at timestamp with time zone
 );
@@ -222,7 +223,6 @@ CREATE TABLE krumnet.lobbies (
     id character varying(36) DEFAULT public.uuid_generate_v4() NOT NULL,
     job_id character varying NOT NULL,
     name character varying NOT NULL,
-    settings bit(10) NOT NULL,
     created_at timestamp with time zone DEFAULT now(),
     closed_at timestamp with time zone
 );
@@ -239,7 +239,6 @@ CREATE TABLE krumnet.lobby_memberships (
     user_id character varying(36) NOT NULL,
     lobby_id character varying(36) NOT NULL,
     invited_by character varying(36),
-    permissions bit(10) NOT NULL,
     joined_at timestamp with time zone,
     left_at timestamp with time zone
 );
@@ -389,142 +388,6 @@ ALTER TABLE ONLY public.knex_migrations ALTER COLUMN id SET DEFAULT nextval('pub
 --
 
 ALTER TABLE ONLY public.knex_migrations_lock ALTER COLUMN index SET DEFAULT nextval('public.knex_migrations_lock_index_seq'::regclass);
-
-
---
--- Data for Name: game_member_placement_results; Type: TABLE DATA; Schema: krumnet; Owner: postgres
---
-
-COPY krumnet.game_member_placement_results (id, user_id, lobby_id, member_id, game_id, created_at, place) FROM stdin;
-\.
-
-
---
--- Data for Name: game_member_round_placement_results; Type: TABLE DATA; Schema: krumnet; Owner: postgres
---
-
-COPY krumnet.game_member_round_placement_results (id, user_id, lobby_id, member_id, game_id, round_id, created_at, place) FROM stdin;
-\.
-
-
---
--- Data for Name: game_memberships; Type: TABLE DATA; Schema: krumnet; Owner: postgres
---
-
-COPY krumnet.game_memberships (id, user_id, lobby_id, lobby_member_id, game_id, permissions, created_at, left_at) FROM stdin;
-\.
-
-
---
--- Data for Name: game_round_entries; Type: TABLE DATA; Schema: krumnet; Owner: postgres
---
-
-COPY krumnet.game_round_entries (id, round_id, member_id, user_id, game_id, lobby_id, entry, auto, created_at) FROM stdin;
-\.
-
-
---
--- Data for Name: game_round_entry_votes; Type: TABLE DATA; Schema: krumnet; Owner: postgres
---
-
-COPY krumnet.game_round_entry_votes (id, round_id, lobby_id, game_id, member_id, user_id, entry_id, created_at) FROM stdin;
-\.
-
-
---
--- Data for Name: game_rounds; Type: TABLE DATA; Schema: krumnet; Owner: postgres
---
-
-COPY krumnet.game_rounds (id, lobby_id, game_id, "position", prompt, created_at, started_at, fulfilled_at, completed_at) FROM stdin;
-\.
-
-
---
--- Data for Name: games; Type: TABLE DATA; Schema: krumnet; Owner: postgres
---
-
-COPY krumnet.games (id, job_id, name, lobby_id, created_at, ended_at) FROM stdin;
-\.
-
-
---
--- Data for Name: google_accounts; Type: TABLE DATA; Schema: krumnet; Owner: postgres
---
-
-COPY krumnet.google_accounts (id, email, name, google_id, user_id) FROM stdin;
-\.
-
-
---
--- Data for Name: lobbies; Type: TABLE DATA; Schema: krumnet; Owner: postgres
---
-
-COPY krumnet.lobbies (id, job_id, name, settings, created_at, closed_at) FROM stdin;
-\.
-
-
---
--- Data for Name: lobby_memberships; Type: TABLE DATA; Schema: krumnet; Owner: postgres
---
-
-COPY krumnet.lobby_memberships (id, user_id, lobby_id, invited_by, permissions, joined_at, left_at) FROM stdin;
-\.
-
-
---
--- Data for Name: prompts; Type: TABLE DATA; Schema: krumnet; Owner: postgres
---
-
-COPY krumnet.prompts (id, number, prompt, source, created_by, approved, created_at) FROM stdin;
-\.
-
-
---
--- Data for Name: users; Type: TABLE DATA; Schema: krumnet; Owner: postgres
---
-
-COPY krumnet.users (id, default_email, name, created_at) FROM stdin;
-\.
-
-
---
--- Data for Name: knex_migrations; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.knex_migrations (id, name, batch, migration_time) FROM stdin;
-64	20200528095042_create_initial_schema.js	1	2020-05-30 17:50:41.77-04
-65	20200529162707_create_round_game_winner_tables.js	2	2020-05-30 17:50:43.477-04
-\.
-
-
---
--- Data for Name: knex_migrations_lock; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.knex_migrations_lock (index, is_locked) FROM stdin;
-1	0
-\.
-
-
---
--- Name: prompts_number_seq; Type: SEQUENCE SET; Schema: krumnet; Owner: postgres
---
-
-SELECT pg_catalog.setval('krumnet.prompts_number_seq', 1, false);
-
-
---
--- Name: knex_migrations_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
---
-
-SELECT pg_catalog.setval('public.knex_migrations_id_seq', 65, true);
-
-
---
--- Name: knex_migrations_lock_index_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
---
-
-SELECT pg_catalog.setval('public.knex_migrations_lock_index_seq', 1, true);
 
 
 --
@@ -701,6 +564,22 @@ ALTER TABLE ONLY krumnet.prompts
 
 ALTER TABLE ONLY krumnet.game_member_placement_results
     ADD CONSTRAINT single_game_winner UNIQUE (place, game_id);
+
+
+--
+-- Name: game_member_placement_results single_member_game_placement; Type: CONSTRAINT; Schema: krumnet; Owner: postgres
+--
+
+ALTER TABLE ONLY krumnet.game_member_placement_results
+    ADD CONSTRAINT single_member_game_placement UNIQUE (member_id, game_id);
+
+
+--
+-- Name: game_member_round_placement_results single_member_round_placement; Type: CONSTRAINT; Schema: krumnet; Owner: postgres
+--
+
+ALTER TABLE ONLY krumnet.game_member_round_placement_results
+    ADD CONSTRAINT single_member_round_placement UNIQUE (member_id, round_id);
 
 
 --

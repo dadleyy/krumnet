@@ -1,12 +1,13 @@
 insert into
   krumnet.game_member_placement_results as game_placements
-  (user_id, lobby_id, member_id, game_id, place)
+  (user_id, lobby_id, member_id, game_id, place, vote_count)
 select
-  round_placements.user_id    as user_id,
-  round_placements.lobby_id   as lobby_id,
-  round_placements.member_id  as member_id,
-  round_placements.game_id    as game_id,
-  row_number() over ()        as placement
+  round_placements.user_id         as user_id,
+  round_placements.lobby_id        as lobby_id,
+  round_placements.member_id       as member_id,
+  round_placements.game_id         as game_id,
+  row_number() over ()             as placement,
+  sum(round_placements.vote_count) as vote_count
 from
   krumnet.game_member_round_placement_results as round_placements
 where
