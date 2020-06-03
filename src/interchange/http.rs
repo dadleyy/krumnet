@@ -2,6 +2,7 @@ use crate::interchange::jobs;
 use crate::interchange::jobs::{Job, QueuedJob};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+pub use sqlx::FromRow;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -24,10 +25,10 @@ pub struct GameRoundEntry {
   pub user_name: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, FromRow)]
 #[serde(rename_all = "snake_case")]
 pub struct GameRoundVote {
-  pub id: String,
+  pub vote_id: String,
   pub member_id: String,
   pub user_id: String,
   pub entry_id: String,

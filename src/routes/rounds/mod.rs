@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use log::{debug, info, warn};
-use sqlx::query_file;
+use sqlx::{query_file, query_file_as, FromRow};
 use std::io::{Error, Result};
 
 use crate::{
@@ -14,14 +14,15 @@ fn log_err<E: std::error::Error>(error: E) -> Error {
   errors::humanize_error(error)
 }
 
+#[derive(FromRow)]
 struct RoundDetailRow {
-  id: String,
+  round_id: String,
   prompt: Option<String>,
-  position: i32,
-  created: DateTime<Utc>,
-  completed: Option<DateTime<Utc>>,
-  started: Option<DateTime<Utc>>,
-  fulfilled: Option<DateTime<Utc>>,
+  pos: i32,
+  created_at: DateTime<Utc>,
+  completed_at: Option<DateTime<Utc>>,
+  started_at: Option<DateTime<Utc>>,
+  fulfilled_at: Option<DateTime<Utc>>,
 }
 
 async fn round_details(
@@ -30,7 +31,8 @@ async fn round_details(
   round_id: &String,
 ) -> Result<RoundDetailRow> {
   let mut conn = context.records().q().await?;
-  query_file!(
+  query_file_as!(
+    RoundDetailRow,
     "src/routes/rounds/data-store/load-round-details.sql",
     user_id,
     round_id
@@ -40,20 +42,7 @@ async fn round_details(
   .map_err(log_err)?
   .into_iter()
   .nth(0)
-  .map(|row| {
-    Ok(RoundDetailRow {
-      id: row.round_id,
-      prompt: row.prompt,
-      position: row.pos,
-      created: row
-        .created_at
-        .ok_or_else(|| errors::e("Unable to parse round created timestamp"))?,
-      completed: row.completed_at,
-      started: row.started_at,
-      fulfilled: row.fulfilled_at,
-    })
-  })
-  .unwrap_or_else(|| Err(errors::e(format!("Unable to find round '{}'", round_id))))
+  .ok_or_else(|| errors::e(format!("Unable to find round '{}'", round_id)))
 }
 
 pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
@@ -72,13 +61,13 @@ pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
   let rid = ids.iter().nth(0).ok_or(errors::e("invalid id"))?;
   debug!("attempting to find round from single id - {:?}", rid);
   let RoundDetailRow {
-    id,
+    round_id: id,
     prompt,
-    position,
-    created,
-    fulfilled,
-    completed,
-    started,
+    pos: position,
+    created_at: created,
+    fulfilled_at: fulfilled,
+    completed_at: completed,
+    started_at: started,
   } = round_details(context, &uid, &rid).await?;
 
   debug!("found round row '{}', parsing into response", id);
@@ -108,26 +97,14 @@ async fn votes_for_round(
 ) -> Result<Vec<interchange::http::GameRoundVote>> {
   let mut conn = context.records_connection().await?;
   info!("loading votes for round '{}'", round_id);
-  query_file!(
+  query_file_as!(
+    interchange::http::GameRoundVote,
     "src/routes/rounds/data-store/load-round-votes.sql",
     round_id
   )
   .fetch_all(&mut conn)
   .await
-  .map_err(log_err)?
-  .into_iter()
-  .map(|row| {
-    Ok(interchange::http::GameRoundVote {
-      id: row.vote_id,
-      entry_id: row.entry_id,
-      member_id: row.member_id,
-      user_id: row.user_id,
-      created: row
-        .created
-        .ok_or(errors::e("Unable to parse vote created timestamp"))?,
-    })
-  })
-  .collect()
+  .map_err(log_err)
 }
 
 async fn results_for_round(
