@@ -159,10 +159,7 @@ async fn check_round_fullfillment_inner(
   records: &RecordStore,
 ) -> Result<u8, String> {
   info!("checking fullfillment of round '{}'", round_id);
-  println!("before entry count");
-
   let entry_count = count_entries(round_id, records).await?;
-  println!("before member count");
   let member_count = count_members(round_id, records).await?;
 
   debug!(
