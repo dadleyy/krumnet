@@ -13,6 +13,6 @@ exports.down = async function(knex) {
     table.dropColumn('vote_count');
   });
   await knex.schema.withSchema('krumnet').table('game_member_placement_results', function(table) {
-    table.integer('vote_count').defaultTo(0).notNullable();
+    table.dropColumn('vote_count');
   });
 };
