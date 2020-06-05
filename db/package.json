@@ -8,6 +8,8 @@
     "migrate:all": "knex migrate:latest",
     "migrate:up": "knex migrate:up",
     "migrate:down": "knex migrate:down",
+    "migrate:rollback": "knex migrate:rollback",
+    "migrate:reset": "npm run migrate:rollback -- --all && npm run migrate:all",
     "seed:make": "knex seed:make",
     "seed:run": "knex seed:run"
   },
