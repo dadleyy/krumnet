@@ -1,0 +1,27 @@
+{
+  "addr": "0.0.0.0:8080",
+  "krumi": {
+    "auth_uri": "http://0.0.0.0:8081/auth/callback",
+    "cors_origin": "http://0.0.0.0:8081"
+  },
+  "record_store": {
+    "postgres_uri": "postgresql://postgres@0.0.0.0:8099/krumnet_test",
+    "redis_uri": "0.0.0.0:6379"
+  },
+  "job_store": {
+    "queue_key": "krumnet_test:provisioning_queue",
+    "map_key": "krumnet_test:provisioning_map",
+    "dequeue_key": "krumnet_test:provisioning_cleanup_queue",
+    "redis_uri": "0.0.0.0:6379"
+  },
+  "session_store": {
+    "redis_uri": "0.0.0.0:6379",
+    "secret": "krumnet",
+    "session_prefix": "session_test"
+  },
+  "google": {
+    "client_id": "...",
+    "client_secret": "...",
+    "redirect_uri": "http://0.0.0.0:8080/auth/callback"
+  }
+}

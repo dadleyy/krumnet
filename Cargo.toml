@@ -1,0 +1,63 @@
+[package]
+name = "krumnet"
+version = "1.0.0"
+authors = ["Danny Hadley <dadleyy@gmail.com>"]
+edition = "2018"
+publish = false
+default-run = "krumnet"
+
+[lib]
+name = "krumnet"
+path = "src/lib.rs"
+
+[[bin]]
+name = "krumnet"
+path = "src/bin/krumnet/main.rs"
+
+[[bin]]
+name = "kruwk"
+path = "src/bin/kruwk/main.rs"
+
+[dependencies]
+async-std = "^1.0"
+rand = "^0.7"
+
+# url has better ergonomics for serializing + deserializing urls
+url = "^2.1.1"
+http = "^0.2"
+
+chrono-tz = "^0.5"
+gumdrop = "^0.8"
+serde_json = "^1.0"
+isahc = "^0.9"
+log = "^0.4"
+env_logger = "^0.7"
+elaine = "^1.0"
+jsonwebtoken = "^7.1.0"
+dotenv = "^0.15"
+
+[dependencies.sqlx]
+version = "^0.3"
+features = ["postgres", "chrono", "macros"]
+
+[dependencies.kramer]
+version = "^1.0.1"
+features = ["kramer-async"]
+
+[dependencies.uuid]
+version = "^0.8"
+features = ["v4"]
+
+[dependencies.serde]
+version = "^1.0"
+features = ["derive"]
+
+[dependencies.chrono]
+version = "^0.4"
+features = ["serde"]
+
+[dev-dependencies]
+mockito = "^0.25"
+
+[profile.release]
+codegen-units = 1

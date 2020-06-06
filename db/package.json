@@ -1,0 +1,24 @@
+{
+  "name": "krudb",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "migrate:list": "knex migrate:list",
+    "migrate:make": "knex migrate:make",
+    "migrate:all": "knex migrate:latest",
+    "migrate:up": "knex migrate:up",
+    "migrate:down": "knex migrate:down",
+    "migrate:rollback": "knex migrate:rollback",
+    "migrate:reset": "npm run migrate:rollback -- --all && npm run migrate:all",
+    "seed:make": "knex seed:make",
+    "seed:run": "knex seed:run"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "debug": "^4.1.1",
+    "dotenv": "^8.2.0",
+    "knex": "^0.21.1",
+    "pg": "^8.2.1"
+  }
+}

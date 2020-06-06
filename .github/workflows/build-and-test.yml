@@ -1,0 +1,147 @@
+name: gh.build-and-test
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image:  rust:1.43.0
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+        options: --entrypoint redis-server
+      postgres:
+        image: postgres:10.8
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      PGPASSWORD: postgres
+      DATABASE_URL: postgresql://postgres:postgres@postgres/postgres
+      KRUMNET_VERSION: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v1
+      - name: Apt update
+        run: apt-get update
+      - name: Install packages
+        run: apt-get install -y postgresql-client libpq-dev nodejs npm
+      - name: Prepare knex
+        run: cd db && npm i
+      - name: Migrate DB
+        run: cd db && npm run migrate:all
+        env:
+          DEBUG: '*'
+          KRUMNET_TEST_CONFIG_FILE: '../ci/github-actions/krumnet-config.json'
+          PGPASSWORD: postgres
+      - name: Seed DB
+        run: cd db && npm run seed:run
+        env:
+          DEBUG: '*'
+          KRUMNET_TEST_CONFIG_FILE: '../ci/github-actions/krumnet-config.json'
+          PGPASSWORD: postgres
+      - name: Rustup install beta
+        run: rustup toolchain install beta
+      - name: Rustup use beta
+        run: rustup default beta
+      - name: Build main
+        run: cargo build --bin krumnet
+      - name: Build worker
+        run: cargo build --bin kruwk
+      - name: Run tests
+        run: cargo test --verbose -- --nocapture
+        env:
+          KRUMNET_TEST_CONFIG_FILE: ci/github-actions/krumnet-config.json
+      - name: Print worker version
+        run: ./target/debug/kruwk -v
+      - name: Print web version
+        run: ./target/debug/krumnet -v
+  dist:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:10.8
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    container:
+      image: rust:1.43.0
+    env:
+      PGPASSWORD: postgres
+      DATABASE_URL: postgresql://postgres:postgres@postgres/postgres
+      KRUMNET_VERSION: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Update apt
+        run: apt-get update
+      - name: Install packages
+        run: apt-get install -y libssl-dev postgresql-client libpq-dev gcc-arm-linux-gnueabihf nodejs npm
+      - name: Prepare knex
+        run: cd db && npm i
+      - name: Migrate DB
+        run: cd db && npm run migrate:all
+        env:
+          DEBUG: '*'
+      - name: Download openssl
+        run: cd /tmp && wget https://www.openssl.org/source/openssl-1.1.1g.tar.gz
+      - name: Extract openssl
+        run: cd /tmp && tar xzf openssl-1.1.1g.tar.gz
+      - name: Configure openssl
+        run: cd /tmp/openssl-1.1.1g && ./config shared
+        env:
+          MACHINE: armv7
+          ARCH: arm
+          CC: arm-linux-gnueabihf-gcc
+      - name: Build openssl
+        run: cd /tmp/openssl-1.1.1g && make
+        env:
+          MACHINE: armv7
+          ARCH: arm
+          CC: arm-linux-gnueabihf-gcc
+      - name: Add target
+        run: rustup target add armv7-unknown-linux-gnueabihf
+      - name: Add target components
+        run: rustup component add --target armv7-unknown-linux-gnueabihf rust-src rust-std rustc-dev
+      - name: Build w/ target
+        run: cargo build --target armv7-unknown-linux-gnueabihf --release
+        env:
+          OPENSSL_LIB_DIR: /tmp/openssl-1.1.1g/
+          OPENSSL_INCLUDE_DIR: /tmp/openssl-1.1.1g/include
+      - name: Prepare distributable
+        run: mkdir -p target/dist/krumpled
+      - name: Populate distributable (krumnet)
+        run: cp target/armv7-unknown-linux-gnueabihf/release/krumnet target/dist/krumpled/krumnet
+      - name: Populate distributable (kruwk)
+        run: cp target/armv7-unknown-linux-gnueabihf/release/kruwk target/dist/krumpled/kruwk
+      - name: Compress distributable
+        run: tar cvzf ./krumpled-armv7-unknown-linux-gnueabihf.tar.gz -C target/dist krumpled
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/')
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+      - name: Upload asset
+        if: startsWith(github.ref, 'refs/tags/')
+        id: upload_release_asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./krumpled-armv7-unknown-linux-gnueabihf.tar.gz
+          asset_name: krumpled-armv7-unknown-linux-gnueabihf.tar.gz
+          asset_content_type: application/tar+gzip
