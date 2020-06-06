@@ -188,7 +188,7 @@ pub async fn callback(context: &Context, uri: &Uri) -> Result<Response> {
     }
   };
 
-  info!("received oauth callback - {:?}", profile);
+  info!("received oauth callback - {:?}", profile.sub);
 
   let uid = match find_or_create_user(&profile, context).await {
     Ok(id) => id,
