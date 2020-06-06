@@ -1,5 +1,5 @@
 select
-  votes.id         as vote_id,
+  votes.id         as id,
   votes.entry_id   as entry_id,
   votes.member_id  as member_id,
   votes.user_id    as user_id,

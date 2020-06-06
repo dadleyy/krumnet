@@ -28,7 +28,7 @@ pub struct GameRoundEntry {
 #[derive(Debug, Serialize, FromRow)]
 #[serde(rename_all = "snake_case")]
 pub struct GameRoundVote {
-  pub vote_id: String,
+  pub id: String,
   pub member_id: String,
   pub user_id: String,
   pub entry_id: String,
