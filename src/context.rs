@@ -87,10 +87,8 @@ pub async fn load_authorization(
     .nth(0)
     .and_then(|row| {
       let id = row.user_id;
-      let name = row.user_name;
-      let email = row.user_email;
 
-      info!("found user '{:?}' {:?} {:?}", id, name, email);
+      info!("found user '{:?}'", id);
 
       Some(Authority::User {
         id,
