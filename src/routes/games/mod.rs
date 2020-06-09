@@ -13,18 +13,23 @@ use crate::{
   interchange, read_size_async, Authority, Context, Response,
 };
 
+const NOT_ENOUGH_MEMBERS: &'static str = "errors.games.not_enough_members";
+const INVALID_LOBBY: &'static str = "errors.games.invalid_lobby";
+
 #[derive(Debug, Deserialize)]
 struct EntryVotePayload {
   pub round_id: String,
   pub entry_id: String,
 }
 
+// Route
+// POST /round-entry-votes
 pub async fn create_entry_vote<R: AsyncRead + Unpin>(
   context: &Context,
   reader: &mut R,
 ) -> Result<Response> {
   let uid = match context.authority() {
-    Authority::None => return Ok(Response::not_found().cors(context.cors())),
+    Authority::None => return Ok(Response::unauthorized().cors(context.cors())),
     Authority::User { id, .. } => id,
   };
   let contents = read_size_async(reader, context.pending()).await?;
@@ -36,7 +41,7 @@ pub async fn create_entry_vote<R: AsyncRead + Unpin>(
     authority.user_id, payload.entry_id, authority.round_id
   );
 
-  let mut conn = context.records().q().await?;
+  let mut conn = context.records_connection().await?;
 
   let attempt = query_file!(
     "src/routes/games/data-store/create-round-entry-vote.sql",
@@ -82,7 +87,7 @@ async fn authority_for_round(
   round_id: &String,
   user_id: &String,
 ) -> Result<RoundAuthority> {
-  let mut conn = context.records().q().await?;
+  let mut conn = context.records_connection().await?;
   query_file!(
     "src/routes/games/data-store/game-for-entry-creation.sql",
     round_id,
@@ -111,19 +116,21 @@ struct EntryPayload {
   pub entry: String,
 }
 
+// Route
+// POST /round-entries
 pub async fn create_entry<R: AsyncRead + Unpin>(
   context: &Context,
   reader: &mut R,
 ) -> Result<Response> {
   let uid = match context.authority() {
-    Authority::None => return Ok(Response::not_found().cors(context.cors())),
+    Authority::None => return Ok(Response::unauthorized().cors(context.cors())),
     Authority::User { id, .. } => id,
   };
 
   let contents = read_size_async(reader, context.pending()).await?;
   let payload = deserialize::<EntryPayload>(&contents)?;
   let authority = authority_for_round(context, &payload.round_id, &uid).await?;
-  let mut conn = context.records().q().await?;
+  let mut conn = context.records_connection().await?;
   let created = query_file!(
     "src/routes/games/data-store/create-round-entry.sql",
     authority.round_id,
@@ -182,7 +189,7 @@ async fn members_for_game(
   context: &Context,
   id: &String,
 ) -> Result<Vec<interchange::http::GameMember>> {
-  let mut conn = context.records().q().await?;
+  let mut conn = context.records_connection().await?;
 
   query_file!("src/routes/games/data-store/load-game-members.sql", id)
     .fetch_all(&mut conn)
@@ -206,7 +213,7 @@ async fn rounds_for_game(
   context: &Context,
   id: &String,
 ) -> Result<Vec<interchange::http::GameRound>> {
-  let mut conn = context.records().q().await?;
+  let mut conn = context.records_connection().await?;
   query_file!("src/routes/games/data-store/load-rounds.sql", id)
     .fetch_all(&mut conn)
     .await
@@ -239,7 +246,7 @@ async fn placements_for_game(
   context: &Context,
   game_id: &String,
 ) -> Result<Vec<interchange::http::GameDetailPlacement>> {
-  let mut conn = context.records().q().await?;
+  let mut conn = context.records_connection().await?;
   query_file!("src/routes/games/data-store/load-placements.sql", game_id)
     .fetch_all(&mut conn)
     .await
@@ -258,7 +265,7 @@ async fn placements_for_game(
 }
 
 async fn find_game(context: &Context, uid: &String, gid: &String) -> Result<Response> {
-  let mut conn = context.records().q().await?;
+  let mut conn = context.records_connection().await?;
   let details = query_file!(
     "src/routes/games/data-store/load-game-details.sql",
     gid,
@@ -312,10 +319,12 @@ async fn find_game(context: &Context, uid: &String, gid: &String) -> Result<Resp
   Response::ok_json(&result).map(|r| r.cors(context.cors()))
 }
 
+// Route
+// GET /games
 pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
   let uid = match context.authority() {
     Authority::User { id, .. } => id,
-    Authority::None => return Ok(Response::not_found().cors(context.cors())),
+    Authority::None => return Ok(Response::unauthorized().cors(context.cors())),
   };
 
   let ids = query_values(uri, "ids[]");
@@ -330,24 +339,26 @@ pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
   find_game(context, uid, gid).await
 }
 
+// Route
+// POST /games
 pub async fn create<R>(context: &Context, reader: &mut R) -> Result<Response>
 where
   R: AsyncRead + Unpin,
 {
   let uid = match context.authority() {
-    Authority::None => return Ok(Response::not_found().cors(context.cors())),
+    Authority::None => return Ok(Response::unauthorized().cors(context.cors())),
     Authority::User { id, .. } => id,
   };
 
   debug!("creating new game for user - {}", uid);
 
   let contents = read_size_async(reader, context.pending()).await?;
-  let payload = deserialize::<CreatePayload>(&contents)?;
+  let CreatePayload { lobby_id } = deserialize::<CreatePayload>(&contents)?;
 
-  let mut conn = context.records().q().await?;
+  let mut conn = context.records_connection().await?;
   let maybe_lobby = query_file!(
     "src/routes/lobbies/data-store/load-lobby-detail.sql",
-    payload.lobby_id,
+    lobby_id,
     uid
   )
   .fetch_all(&mut conn)
@@ -357,31 +368,43 @@ where
   .nth(0);
 
   if let None = maybe_lobby {
-    warn!(
-      "unable to find lobby '{}' for user '{}'",
-      payload.lobby_id, uid
-    );
-    return Ok(Response::not_found().cors(context.cors()));
+    warn!("no lobby '{}' for user '{}'", lobby_id, uid);
+    return Ok(Response::bad_request(INVALID_LOBBY).cors(context.cors()));
   }
 
-  debug!(
-    "lobby exists and ready for new game, queuing job for lobby '{}'",
-    payload.lobby_id
-  );
+  let member_count = query_file!(
+    "src/routes/games/data-store/count-lobby-members.sql",
+    lobby_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(errors::humanize_error)?
+  .into_iter()
+  .nth(0)
+  .and_then(|row| row.member_count)
+  .unwrap_or(0);
+
+  if let 0..=1 = member_count {
+    warn!("not enough members for '{}'", lobby_id);
+    return Ok(Response::bad_request(NOT_ENOUGH_MEMBERS).cors(context.cors()));
+  }
+
+  info!("queuing new game job for lobby '{}'", lobby_id);
 
   let details = interchange::jobs::CreateGame {
     creator: uid.clone(),
-    lobby_id: payload.lobby_id.clone(),
+    lobby_id: lobby_id.clone(),
     result: None,
   };
-  let job_id = context
+
+  context
     .jobs()
     .queue(&interchange::jobs::Job::CreateGame(details))
-    .await?;
-
-  Response::ok_json(interchange::http::JobHandle {
-    id: job_id.clone(),
-    result: None,
-  })
-  .map(|r| r.cors(context.cors()))
+    .await
+    .map(|job_id| interchange::http::JobHandle {
+      id: job_id.clone(),
+      result: None,
+    })
+    .and_then(|payload| Response::ok_json(payload))
+    .map(|response| response.cors(context.cors()))
 }
