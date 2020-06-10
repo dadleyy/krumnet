@@ -1,4 +1,5 @@
 pub const MAX_FILE_SIZE: usize = 1000000usize;
+pub const MAX_LOBBY_MEMBERS: u8 = 10;
 
 pub const GOOGLE_TOKEN_URL: &'static str = "https://www.googleapis.com/oauth2/v4/token";
 pub const GOOGLE_AUTH_URL: &'static str = "https://accounts.google.com/o/oauth2/v2/auth";

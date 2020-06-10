@@ -101,15 +101,11 @@ impl Session {
       created: SystemTime::now(),
     };
 
-    let token = encode(&Header::default(), &claims, &self._encoding_key)
-      .map_err(|e| Error::new(ErrorKind::Other, e))?;
+    let token =
+      encode(&Header::default(), &claims, &self._encoding_key).map_err(|e| Error::new(ErrorKind::Other, e))?;
 
     let key = format!("{}:{}", self._session_prefix, token);
-    let insert = StringCommand::Set(
-      Arity::One((&key, &id)),
-      self._expiration_timeout,
-      Insertion::Always,
-    );
+    let insert = StringCommand::Set(Arity::One((&key, &id)), self._expiration_timeout, Insertion::Always);
     let mut stream = self._stream.write().await;
     execute(&mut (*stream), insert).await?;
     info!(

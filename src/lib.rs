@@ -76,7 +76,7 @@ where
   let (method, path) = extract_parts(&head)?;
   let uri = path.parse::<Uri>().map_err(errors::humanize_error)?;
 
-  info!("request {} (context: {:?})", uri, &ctx);
+  info!("{:?} {}", method, uri);
 
   let response = match (method, uri.path()) {
     (RequestMethod::OPTIONS, _) => {
@@ -119,13 +119,9 @@ where
 
     (RequestMethod::GET, "/rounds") => routes::rounds::find(&ctx, &uri).await,
 
-    (RequestMethod::POST, "/round-entry-votes") => {
-      routes::games::create_entry_vote(&ctx, &mut connection).await
-    }
+    (RequestMethod::POST, "/round-entry-votes") => routes::games::create_entry_vote(&ctx, &mut connection).await,
 
-    (RequestMethod::POST, "/round-entries") => {
-      routes::games::create_entry(&ctx, &mut connection).await
-    }
+    (RequestMethod::POST, "/round-entries") => routes::games::create_entry(&ctx, &mut connection).await,
 
     _ => {
       debug!("not-found - '{}'", path);
@@ -137,10 +133,7 @@ where
     Response::failed().cors(ctx.cors())
   });
 
-  connection
-    .write(format!("{}", response).as_bytes())
-    .await
-    .map(|_| ())
+  connection.write(format!("{}", response).as_bytes()).await.map(|_| ())
 }
 
 pub async fn serve(configuration: Configuration) -> Result<()> {

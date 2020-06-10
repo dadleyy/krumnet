@@ -43,10 +43,7 @@ impl Default for Configuration {
     let path = Path::new(DEFAULT_CONFIG_FILE);
 
     if path.exists() {
-      debug!(
-        "found '{}', attempting to load as default",
-        DEFAULT_CONFIG_FILE
-      );
+      debug!("found '{}', attempting to load as default", DEFAULT_CONFIG_FILE);
 
       if let Ok(config) = Configuration::from_str(DEFAULT_CONFIG_FILE) {
         return config;
@@ -70,9 +67,8 @@ impl FromStr for Configuration {
   type Err = Error;
 
   fn from_str(source: &str) -> Result<Self, Self::Err> {
-    let buffer = read(source).and_then(|buffer| {
-      String::from_utf8(buffer).map_err(|err| Error::new(ErrorKind::Other, err))
-    })?;
+    let buffer =
+      read(source).and_then(|buffer| String::from_utf8(buffer).map_err(|err| Error::new(ErrorKind::Other, err)))?;
     let result = serde_json::from_str::<Configuration>(buffer.as_str());
 
     result.map_err(|err| {

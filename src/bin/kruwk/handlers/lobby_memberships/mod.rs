@@ -9,7 +9,7 @@ fn stringify_error<E: std::fmt::Display>(e: E) -> String {
 }
 
 async fn count_lobby_members(lobby_id: &String, context: &Context<'_>) -> Result<i64, String> {
-  let mut conn = context.records.q().await.map_err(stringify_error)?;
+  let mut conn = context.records.acquire().await.map_err(stringify_error)?;
   query_file!(
     "src/bin/kruwk/handlers/lobby_memberships/data-store/count-remaining-lobby-members.sql",
     lobby_id
@@ -20,16 +20,10 @@ async fn count_lobby_members(lobby_id: &String, context: &Context<'_>) -> Result
   .into_iter()
   .nth(0)
   .and_then(|row| {
-    debug!(
-      "found lobby member count for lobby '{}': {:?}",
-      lobby_id, row
-    );
+    debug!("found lobby member count for lobby '{}': {:?}", lobby_id, row);
     row.count.map(Ok)
   })
-  .unwrap_or(Err(format!(
-    "Unable to find matching lobbies for '{}'",
-    lobby_id
-  )))
+  .unwrap_or(Err(format!("Unable to find matching lobbies for '{}'", lobby_id)))
 }
 
 struct LeftGame {
@@ -39,11 +33,8 @@ struct LeftGame {
   game_member_id: String,
 }
 
-async fn leave_games(
-  lobby_member_id: &String,
-  context: &Context<'_>,
-) -> Result<Vec<LeftGame>, String> {
-  let mut conn = context.records.q().await.map_err(stringify_error)?;
+async fn leave_games(lobby_member_id: &String, context: &Context<'_>) -> Result<Vec<LeftGame>, String> {
+  let mut conn = context.records.acquire().await.map_err(stringify_error)?;
   query_file!(
     "src/bin/kruwk/handlers/lobby_memberships/data-store/leave-game-member-by-lobby-member.sql",
     lobby_member_id
@@ -64,7 +55,7 @@ async fn leave_games(
 }
 
 async fn close_lobby(lobby_id: &String, context: &Context<'_>) -> Result<String, String> {
-  let mut conn = context.records.q().await.map_err(stringify_error)?;
+  let mut conn = context.records.acquire().await.map_err(stringify_error)?;
   query_file!(
     "src/bin/kruwk/handlers/lobby_memberships/data-store/close-lobby.sql",
     lobby_id
@@ -75,17 +66,10 @@ async fn close_lobby(lobby_id: &String, context: &Context<'_>) -> Result<String,
   .into_iter()
   .nth(0)
   .map(|row| Ok(row.id))
-  .unwrap_or(Err(format!(
-    "Unable to set closed timestamp for lobby '{}'",
-    lobby_id
-  )))
+  .unwrap_or(Err(format!("Unable to set closed timestamp for lobby '{}'", lobby_id)))
 }
 
-pub async fn cleanup_inner(
-  member_id: &String,
-  lobby_id: &String,
-  context: &Context<'_>,
-) -> Result<String, String> {
+pub async fn cleanup_inner(member_id: &String, lobby_id: &String, context: &Context<'_>) -> Result<String, String> {
   let count = count_lobby_members(lobby_id, context).await?;
   let left_games = leave_games(member_id, context).await?;
 
@@ -106,10 +90,7 @@ pub async fn cleanup_inner(
   }
 
   if count == 0 {
-    info!(
-      "lobby '{}' had no remaining members, closing games and lobby",
-      lobby_id
-    );
+    info!("lobby '{}' had no remaining members, closing games and lobby", lobby_id);
     return close_lobby(lobby_id, context).await;
   }
 

@@ -42,10 +42,7 @@ impl JobStore {
           return Ok(Some(serialized.clone()));
         }
 
-        info!(
-          "strange value popped from provisioning queue - {:?}",
-          contents
-        );
+        info!("strange value popped from provisioning queue - {:?}", contents);
         Ok(None)
       }
       _ => Ok(None),
@@ -63,10 +60,7 @@ impl JobStore {
       return Ok(Some(attempt));
     }
 
-    info!(
-      "strange response from provisioning map for '{}' - {:?}",
-      id, res
-    );
+    info!("strange response from provisioning map for '{}' - {:?}", id, res);
     Ok(None)
   }
 

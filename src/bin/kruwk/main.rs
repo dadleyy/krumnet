@@ -33,13 +33,9 @@ struct Options {
 
 async fn execute<'a>(ctx: &Context<'a>, job: &QueuedJob) -> QueuedJob {
   let job_result = match &job.job {
-    Job::CheckRoundFulfillment(details) => {
-      games::check_round_fullfillment(&details, &ctx.records).await
-    }
+    Job::CheckRoundFulfillment(details) => games::check_round_fullfillment(&details, &ctx.records).await,
     Job::CreateLobby(details) => lobbies::create_lobby(&job.id, &details, &ctx.records).await,
-    Job::CleanupLobbyMembership(details) => {
-      lobby_memberships::cleanup(&job.id, &details, &ctx).await
-    }
+    Job::CleanupLobbyMembership(details) => lobby_memberships::cleanup(&job.id, &details, &ctx).await,
     Job::CreateGame(details) => lobbies::create_game(&job.id, &details, &ctx.records).await,
     Job::CleanupGameMembership(details) => game_memberships::cleanup(&details, &ctx).await,
     Job::CheckRoundCompletion(details) => games::check_round_completion(&details, &ctx).await,

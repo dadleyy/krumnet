@@ -25,7 +25,7 @@ impl RecordStore {
     Ok(RecordStore { _pg: pg })
   }
 
-  pub async fn q(&self) -> Result<Connection> {
+  pub async fn acquire(&self) -> Result<Connection> {
     self._pg.acquire().await.map_err(errors::humanize_error)
   }
 }

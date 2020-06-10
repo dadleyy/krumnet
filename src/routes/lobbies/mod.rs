@@ -20,7 +20,7 @@ pub struct Payload {
 }
 
 async fn load_games(context: &Context, id: &String) -> Result<Vec<interchange::http::LobbyGame>> {
-  let mut conn = context.records().q().await?;
+  let mut conn = context.records_connection().await?;
 
   query_file!("src/routes/lobbies/data-store/load-lobby-games.sql", id)
     .fetch_all(&mut conn)
@@ -35,9 +35,7 @@ async fn load_games(context: &Context, id: &String) -> Result<Vec<interchange::h
           .ok_or(errors::e("Unable to parse game created at timestamp"))?,
         ended: row.ended_at,
         name: row.game_name,
-        rounds_remaining: row
-          .round_count
-          .ok_or(errors::e("Unable to parse game round count"))?,
+        rounds_remaining: row.round_count.ok_or(errors::e("Unable to parse game round count"))?,
       })
     })
     .collect()
@@ -54,33 +52,26 @@ async fn lobby_details_for_user(
   lobby_id: &String,
   user_id: &String,
 ) -> Result<Option<LobbyDetailRow>> {
-  let mut conn = context.records().q().await?;
-  let details = query_file!(
-    "src/routes/lobbies/data-store/load-lobby-detail.sql",
-    lobby_id,
-    user_id
-  )
-  .fetch_all(&mut conn)
-  .await
-  .map_err(errors::humanize_error)?
-  .into_iter()
-  .nth(0)
-  .and_then(|row| {
-    Some(LobbyDetailRow {
-      id: row.lobby_id,
-      name: row.lobby_name,
-      created: row.created_at?,
-    })
-  });
+  let mut conn = context.records_connection().await?;
+  let details = query_file!("src/routes/lobbies/data-store/load-lobby-detail.sql", lobby_id, user_id)
+    .fetch_all(&mut conn)
+    .await
+    .map_err(errors::humanize_error)?
+    .into_iter()
+    .nth(0)
+    .and_then(|row| {
+      Some(LobbyDetailRow {
+        id: row.lobby_id,
+        name: row.lobby_name,
+        created: row.created_at?,
+      })
+    });
 
   Ok(details)
 }
 
-async fn load_members(
-  context: &Context,
-  id: &String,
-) -> Result<Vec<interchange::http::LobbyMember>> {
-  let mut conn = context.records().q().await?;
+async fn load_members(context: &Context, id: &String) -> Result<Vec<interchange::http::LobbyMember>> {
+  let mut conn = context.records_connection().await?;
   query_file!("src/routes/lobbies/data-store/load-lobby-members.sql", id)
     .fetch_all(&mut conn)
     .await
@@ -102,7 +93,7 @@ async fn load_members(
 pub async fn details(context: &Context, id: &String) -> Result<Response> {
   let uid = match context.authority() {
     Authority::User { id: s, token: _ } => s,
-    _ => return Ok(Response::not_found().cors(context.cors())),
+    _ => return Ok(Response::unauthorized().cors(context.cors())),
   };
 
   debug!("looking for loby via '{}' for user '{}'", id, uid);
@@ -111,10 +102,7 @@ pub async fn details(context: &Context, id: &String) -> Result<Response> {
     None => return Ok(Response::not_found().cors(context.cors())),
   };
 
-  debug!(
-    "found match for lobby '{}' details, loading members",
-    deets.name
-  );
+  debug!("found lobby '{}' details, loading members", deets.name);
   let members = load_members(&context, &id).await?;
   let games = load_games(&context, &id).await?;
   let details = interchange::http::LobbyDetails {
@@ -126,10 +114,12 @@ pub async fn details(context: &Context, id: &String) -> Result<Response> {
   Ok(Response::ok_json(&details)?.cors(context.cors()))
 }
 
+// Route
+// GET /lobbies
 pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
   let uid = match context.authority() {
     Authority::User { id, .. } => id,
-    Authority::None => return Ok(Response::not_found().cors(context.cors())),
+    Authority::None => return Ok(Response::unauthorized().cors(context.cors())),
   };
 
   let ids = query_values(uri, "ids[]");
@@ -141,7 +131,7 @@ pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
   }
 
   debug!("loading lobbies for user '{}'", uid);
-  let mut conn = context.records().q().await?;
+  let mut conn = context.records_connection().await?;
 
   query_file!("src/routes/lobbies/data-store/lobbies-for-user.sql", uid)
     .fetch_all(&mut conn)
@@ -168,40 +158,30 @@ pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
     .map(|response| response.cors(context.cors()))
 }
 
+// Route
+// POST /lobbies
 pub async fn create<R>(context: &Context, reader: &mut R) -> Result<Response>
 where
   R: Read + Unpin,
 {
   let uid = match context.authority() {
     Authority::User { id: s, token: _ } => s,
-    _ => return Ok(Response::not_found().cors(context.cors())),
+    _ => return Ok(Response::unauthorized().cors(context.cors())),
   };
 
-  debug!(
-    "authorized action, attempting to read {} bytes",
-    context.pending()
-  );
-
+  // TODO - does this need to be something?
   let contents = read_size_async(reader, context.pending()).await?;
+  deserialize::<Payload>(&contents)?;
 
-  info!(
-    "creating new lobby for user '{}' ({} pending bytes)",
-    uid,
-    context.pending()
-  );
+  info!("new lobby for user '{}'", uid);
 
   let job_id = context
     .jobs()
-    .queue(&interchange::jobs::Job::CreateLobby(
-      interchange::jobs::CreateLobby {
-        creator: uid.clone(),
-        result: None,
-      },
-    ))
+    .queue(&interchange::jobs::Job::CreateLobby(interchange::jobs::CreateLobby {
+      creator: uid.clone(),
+      result: None,
+    }))
     .await?;
-
-  let payload = deserialize::<Payload>(&contents)?;
-  debug!("buffer after read {:?}", payload);
 
   Response::ok_json(interchange::http::JobHandle {
     id: job_id.clone(),
