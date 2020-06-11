@@ -1,3 +1,4 @@
+use async_std::sync::Arc;
 use async_std::task::block_on;
 use gumdrop::{parse_args_default_or_exit, Options as Gumdrop};
 use log::{debug, info, warn};
@@ -6,16 +7,11 @@ use std::io::Result;
 use std::process::exit;
 
 use krumnet::{
+  bg::context::Context,
+  bg::handlers::{game_memberships, games, lobbies, lobby_memberships},
   interchange::jobs::{Job, QueuedJob},
   version, Configuration, JobStore, RecordStore,
 };
-
-mod context;
-mod handlers;
-
-pub use context::Context;
-
-use handlers::{game_memberships, games, lobbies, lobby_memberships};
 
 const MAX_WORKER_FAILS: u8 = 10;
 
@@ -31,7 +27,7 @@ struct Options {
   version: bool,
 }
 
-async fn execute<'a>(ctx: &Context<'a>, job: &QueuedJob) -> QueuedJob {
+async fn execute<'a>(ctx: &Context, job: &QueuedJob) -> QueuedJob {
   let job_result = match &job.job {
     Job::CheckRoundFulfillment(details) => {
       games::check_round_fullfillment(&details, &ctx.records).await
@@ -69,12 +65,11 @@ fn main() -> Result<()> {
   info!("starting worker process (version {})", version::version());
 
   block_on(async {
-    let jobs = JobStore::open(&opts.config).await?;
-    let records = RecordStore::open(&opts.config).await?;
+    let jobs = Arc::new(JobStore::open(&opts.config).await?);
 
     let ctx = Context {
-      records: &records,
-      jobs: &jobs,
+      records: Arc::new(RecordStore::open(&opts.config).await?),
+      jobs: Arc::new(JobStore::open(&opts.config).await?),
     };
 
     let mut fails = 0;

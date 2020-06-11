@@ -16,6 +16,7 @@ use log::{debug, error as fatal, info, warn};
 use serde::Serialize;
 
 pub mod authority;
+pub mod bg;
 pub mod configuration;
 pub mod constants;
 pub mod context;

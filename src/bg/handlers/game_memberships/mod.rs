@@ -1,13 +1,12 @@
-use super::Context;
 use log::{debug, info, warn};
 use sqlx::query_file;
 
-use krumnet::interchange;
-use krumnet::interchange::jobs::CleanupGameMembershipContext;
+use crate::interchange::jobs::CleanupGameMembershipContext;
+use crate::{bg::context::Context, interchange};
 
 pub async fn cleanup_inner(
   details: &CleanupGameMembershipContext,
-  context: &Context<'_>,
+  context: &Context,
 ) -> Result<String, String> {
   let mut conn = context.records.acquire().await.map_err(|e| {
     warn!("unable to aquire database connection - {}", e);
@@ -15,7 +14,7 @@ pub async fn cleanup_inner(
   })?;
 
   let mut round_ids = query_file!(
-    "src/bin/kruwk/handlers/game_memberships/data-store/create-empty-entries-for-game-member.sql",
+    "src/bg/handlers/game_memberships/data-store/create-empty-entries-for-game-member.sql",
     &details.user_id
   )
   .fetch_all(&mut conn)
@@ -50,7 +49,7 @@ pub async fn cleanup_inner(
 
 pub async fn cleanup(
   details: &CleanupGameMembershipContext,
-  context: &Context<'_>,
+  context: &Context,
 ) -> interchange::jobs::Job {
   debug!("cleaning up game member '{}'", details.member_id);
   interchange::jobs::Job::CleanupGameMembership(interchange::jobs::CleanupGameMembershipContext {
@@ -61,8 +60,13 @@ pub async fn cleanup(
 
 #[cfg(test)]
 mod tests {
+  use crate::bg::test_helpers::get_test_context;
+  use async_std::task::block_on;
+
   #[test]
   fn create_empty_entries() {
-    assert_eq!(true, true);
+    block_on(async {
+      let ctx = get_test_context().await;
+    });
   }
 }

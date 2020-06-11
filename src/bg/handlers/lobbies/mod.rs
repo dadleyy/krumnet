@@ -1,4 +1,4 @@
-use krumnet::{
+use crate::{
   interchange::jobs::{CreateGame, CreateLobby, Job},
   names, RecordStore,
 };
@@ -20,7 +20,7 @@ struct UserInfo {
 async fn find_user(user_id: &String, records: &RecordStore) -> Result<UserInfo, String> {
   let mut conn = records.acquire().await.map_err(warn_and_stringify)?;
   query_file!(
-    "src/bin/kruwk/handlers/lobbies/data-store/find-user-by-id.sql",
+    "src/bg/handlers/lobbies/data-store/find-user-by-id.sql",
     user_id
   )
   .fetch_all(&mut conn)
@@ -48,7 +48,7 @@ async fn make_lobby(
   let mut conn = records.acquire().await.map_err(warn_and_stringify)?;
 
   query_file!(
-    "src/bin/kruwk/handlers/lobbies/data-store/create-lobby.sql",
+    "src/bg/handlers/lobbies/data-store/create-lobby.sql",
     job_id,
     name,
     user.id
@@ -87,7 +87,7 @@ async fn make_game(
   let mut conn = records.acquire().await.map_err(warn_and_stringify)?;
 
   let gid = query_file!(
-    "src/bin/kruwk/handlers/lobbies/data-store/create-game-for-lobby.sql",
+    "src/bg/handlers/lobbies/data-store/create-game-for-lobby.sql",
     lobby_id,
     name,
     job_id
@@ -103,7 +103,7 @@ async fn make_game(
   info!("game '{}' created for lobby '{}'", gid, lobby_id);
 
   query_file!(
-    "src/bin/kruwk/handlers/lobbies/data-store/create-game-members.sql",
+    "src/bg/handlers/lobbies/data-store/create-game-members.sql",
     gid,
     lobby_id
   )
