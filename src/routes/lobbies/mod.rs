@@ -35,7 +35,9 @@ async fn load_games(context: &Context, id: &String) -> Result<Vec<interchange::h
           .ok_or(errors::e("Unable to parse game created at timestamp"))?,
         ended: row.ended_at,
         name: row.game_name,
-        rounds_remaining: row.round_count.ok_or(errors::e("Unable to parse game round count"))?,
+        rounds_remaining: row
+          .round_count
+          .ok_or(errors::e("Unable to parse game round count"))?,
       })
     })
     .collect()
@@ -53,24 +55,31 @@ async fn lobby_details_for_user(
   user_id: &String,
 ) -> Result<Option<LobbyDetailRow>> {
   let mut conn = context.records_connection().await?;
-  let details = query_file!("src/routes/lobbies/data-store/load-lobby-detail.sql", lobby_id, user_id)
-    .fetch_all(&mut conn)
-    .await
-    .map_err(errors::humanize_error)?
-    .into_iter()
-    .nth(0)
-    .and_then(|row| {
-      Some(LobbyDetailRow {
-        id: row.lobby_id,
-        name: row.lobby_name,
-        created: row.created_at?,
-      })
-    });
+  let details = query_file!(
+    "src/routes/lobbies/data-store/load-lobby-detail.sql",
+    lobby_id,
+    user_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(errors::humanize_error)?
+  .into_iter()
+  .nth(0)
+  .and_then(|row| {
+    Some(LobbyDetailRow {
+      id: row.lobby_id,
+      name: row.lobby_name,
+      created: row.created_at?,
+    })
+  });
 
   Ok(details)
 }
 
-async fn load_members(context: &Context, id: &String) -> Result<Vec<interchange::http::LobbyMember>> {
+async fn load_members(
+  context: &Context,
+  id: &String,
+) -> Result<Vec<interchange::http::LobbyMember>> {
   let mut conn = context.records_connection().await?;
   query_file!("src/routes/lobbies/data-store/load-lobby-members.sql", id)
     .fetch_all(&mut conn)
@@ -177,10 +186,12 @@ where
 
   let job_id = context
     .jobs()
-    .queue(&interchange::jobs::Job::CreateLobby(interchange::jobs::CreateLobby {
-      creator: uid.clone(),
-      result: None,
-    }))
+    .queue(&interchange::jobs::Job::CreateLobby(
+      interchange::jobs::CreateLobby {
+        creator: uid.clone(),
+        result: None,
+      },
+    ))
     .await?;
 
   Response::ok_json(interchange::http::JobHandle {

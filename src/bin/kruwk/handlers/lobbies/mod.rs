@@ -19,23 +19,30 @@ struct UserInfo {
 
 async fn find_user(user_id: &String, records: &RecordStore) -> Result<UserInfo, String> {
   let mut conn = records.acquire().await.map_err(warn_and_stringify)?;
-  query_file!("src/bin/kruwk/handlers/lobbies/data-store/find-user-by-id.sql", user_id)
-    .fetch_all(&mut conn)
-    .await
-    .map_err(warn_and_stringify)?
-    .into_iter()
-    .nth(0)
-    .map(|row| {
-      Ok(UserInfo {
-        id: row.id,
-        name: row.name,
-        email: row.email,
-      })
+  query_file!(
+    "src/bin/kruwk/handlers/lobbies/data-store/find-user-by-id.sql",
+    user_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(warn_and_stringify)?
+  .into_iter()
+  .nth(0)
+  .map(|row| {
+    Ok(UserInfo {
+      id: row.id,
+      name: row.name,
+      email: row.email,
     })
-    .unwrap_or(Err(format!("Unable to find user '{}'", user_id)))
+  })
+  .unwrap_or(Err(format!("Unable to find user '{}'", user_id)))
 }
 
-async fn make_lobby(records: &RecordStore, job_id: &String, creator: &String) -> std::result::Result<String, String> {
+async fn make_lobby(
+  records: &RecordStore,
+  job_id: &String,
+  creator: &String,
+) -> std::result::Result<String, String> {
   let name = names::get();
   let user = find_user(creator, records).await?;
   let mut conn = records.acquire().await.map_err(warn_and_stringify)?;
@@ -71,7 +78,10 @@ async fn make_game(
   lobby_id: &String,
 ) -> std::result::Result<String, String> {
   let user = find_user(creator, records).await?;
-  debug!("creating game for lobby '{}' (user '{}')", lobby_id, user.email);
+  debug!(
+    "creating game for lobby '{}' (user '{}')",
+    lobby_id, user.email
+  );
   let name = names::get();
 
   let mut conn = records.acquire().await.map_err(warn_and_stringify)?;

@@ -15,7 +15,11 @@ pub struct DestroyMembershipPayload {
   lobby_id: String,
 }
 
-async fn join_jobby(context: &Context, lobby_id: &String, user_id: &String) -> Result<(String, String, String)> {
+async fn join_jobby(
+  context: &Context,
+  lobby_id: &String,
+  user_id: &String,
+) -> Result<(String, String, String)> {
   let mut conn = context.records_connection().await?;
   query_file!(
     "src/routes/lobby_memberships/data-store/join-lobby.sql",
@@ -66,12 +70,18 @@ where
       warn!("too many members in '{}' to join", payload.lobby_id);
       return Ok(Response::bad_request(TOO_MANY_MEMBERS).cors(context.cors()));
     }
-    Some(value) => info!("member count for '{}' satisfactory ({})", payload.lobby_id, value),
+    Some(value) => info!(
+      "member count for '{}' satisfactory ({})",
+      payload.lobby_id, value
+    ),
   };
 
   let (member_id, lobby_id, user_id) = join_jobby(context, &payload.lobby_id, &uid).await?;
 
-  info!("user {} is now member {} of lobby {}", user_id, member_id, lobby_id);
+  info!(
+    "user {} is now member {} of lobby {}",
+    user_id, member_id, lobby_id
+  );
   let out = interchange::http::NewLobbyMembership {
     member_id,
     user_id,
@@ -80,7 +90,11 @@ where
   Response::ok_json(&out).map(|r| r.cors(context.cors()))
 }
 
-async fn leave_lobby(context: &Context, lobby_id: &String, user_id: &String) -> Result<(String, String)> {
+async fn leave_lobby(
+  context: &Context,
+  lobby_id: &String,
+  user_id: &String,
+) -> Result<(String, String)> {
   let mut conn = context.records_connection().await?;
   query_file!(
     "src/routes/lobby_memberships/data-store/leave-lobby-for-user.sql",
@@ -118,7 +132,10 @@ where
   let (member_id, lobby_id) = leave_lobby(context, &payload.lobby_id, &uid).await?;
 
   if member_id.len() == 0 {
-    warn!("unable to find row to delete user[{}] lobby[{}]", uid, payload.lobby_id);
+    warn!(
+      "unable to find row to delete user[{}] lobby[{}]",
+      uid, payload.lobby_id
+    );
     return Ok(Response::not_found().cors(context.cors()));
   }
 

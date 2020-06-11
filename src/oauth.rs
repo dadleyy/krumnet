@@ -6,8 +6,9 @@ use std::io::{Error, ErrorKind, Result};
 
 use crate::configuration::GoogleCredentials;
 use crate::constants::{
-  google_auth_url, google_info_url, google_token_url, GOOGLE_AUTH_CLIENT_ID_KEY, GOOGLE_AUTH_REDIRECT_URI_KEY,
-  GOOGLE_AUTH_RESPONSE_TYPE_KEY, GOOGLE_AUTH_RESPONSE_TYPE_VALUE, GOOGLE_AUTH_SCOPE_KEY, GOOGLE_AUTH_SCOPE_VALUE,
+  google_auth_url, google_info_url, google_token_url, GOOGLE_AUTH_CLIENT_ID_KEY,
+  GOOGLE_AUTH_REDIRECT_URI_KEY, GOOGLE_AUTH_RESPONSE_TYPE_KEY, GOOGLE_AUTH_RESPONSE_TYPE_VALUE,
+  GOOGLE_AUTH_SCOPE_KEY, GOOGLE_AUTH_SCOPE_VALUE,
 };
 use crate::http::{header, query as qs, Method, Request, Response, Uri, Url};
 use crate::{errors, Context};
@@ -106,10 +107,17 @@ async fn make_user(details: &UserInfoPayload, context: &Context) -> Result<Strin
 
   let mut conn = context.records_connection().await?;
 
-  query_file!("src/data-store/create-user.sql", email, name, email, name, sub)
-    .execute(&mut conn)
-    .await
-    .map_err(errors::humanize_error)?;
+  query_file!(
+    "src/data-store/create-user.sql",
+    email,
+    name,
+    email,
+    name,
+    sub
+  )
+  .execute(&mut conn)
+  .await
+  .map_err(errors::humanize_error)?;
 
   query_file!("src/data-store/find-user-by-google-id.sql", sub)
     .fetch_all(&mut conn)
@@ -146,9 +154,12 @@ async fn find_or_create_user(profile: &UserInfoPayload, context: &Context) -> Re
 }
 
 fn build_krumi_callback(context: &Context, token: &String) -> Result<String> {
-  let mut parsed_callback = Url::parse(&context.config().krumi.auth_uri).map_err(errors::humanize_error)?;
+  let mut parsed_callback =
+    Url::parse(&context.config().krumi.auth_uri).map_err(errors::humanize_error)?;
 
-  parsed_callback.query_pairs_mut().append_pair("token", token);
+  parsed_callback
+    .query_pairs_mut()
+    .append_pair("token", token);
 
   Ok(parsed_callback.into_string())
 }
@@ -195,14 +206,22 @@ pub async fn callback(context: &Context, uri: &Uri) -> Result<Response> {
 
 pub fn redirect(context: &Context) -> Result<Response> {
   let configuration = context.config();
-  let mut url = google_auth_url().parse::<Url>().map_err(errors::humanize_error)?;
+  let mut url = google_auth_url()
+    .parse::<Url>()
+    .map_err(errors::humanize_error)?;
 
   url
     .query_pairs_mut()
     .clear()
-    .append_pair(GOOGLE_AUTH_RESPONSE_TYPE_KEY, GOOGLE_AUTH_RESPONSE_TYPE_VALUE)
+    .append_pair(
+      GOOGLE_AUTH_RESPONSE_TYPE_KEY,
+      GOOGLE_AUTH_RESPONSE_TYPE_VALUE,
+    )
     .append_pair(GOOGLE_AUTH_CLIENT_ID_KEY, &configuration.google.client_id)
-    .append_pair(GOOGLE_AUTH_REDIRECT_URI_KEY, &configuration.google.redirect_uri)
+    .append_pair(
+      GOOGLE_AUTH_REDIRECT_URI_KEY,
+      &configuration.google.redirect_uri,
+    )
     .append_pair(GOOGLE_AUTH_SCOPE_KEY, GOOGLE_AUTH_SCOPE_VALUE);
 
   debug!("oauth flow redirect to {:?}", url);

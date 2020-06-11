@@ -5,7 +5,9 @@ use sqlx::query_file;
 use std::io::Result;
 
 use crate::http::AUTHORIZATION;
-use crate::{errors, Authority, Configuration, JobStore, RecordConnection, RecordStore, SessionStore};
+use crate::{
+  errors, Authority, Configuration, JobStore, RecordConnection, RecordStore, SessionStore,
+};
 
 pub struct Context {
   _auth: Authority,
@@ -70,7 +72,11 @@ pub struct ContextBuilder {
 
 // Attempts to exchange an authorization token for a user id from the session store, subsequently
 // loading the actual user information from the record store.
-pub async fn load_authorization(token: String, session: &SessionStore, records: &RecordStore) -> Result<Authority> {
+pub async fn load_authorization(
+  token: String,
+  session: &SessionStore,
+  records: &RecordStore,
+) -> Result<Authority> {
   let uid = session.get(&token).await?;
   let mut conn = records.acquire().await?;
   let tenant = query_file!("src/data-store/user-for-session.sql", uid)
@@ -93,13 +99,19 @@ pub async fn load_authorization(token: String, session: &SessionStore, records: 
   Ok(tenant.unwrap_or(Authority::None))
 }
 
-async fn load_auth(head: &Head, session: &SessionStore, records: &RecordStore) -> Result<Authority> {
+async fn load_auth(
+  head: &Head,
+  session: &SessionStore,
+  records: &RecordStore,
+) -> Result<Authority> {
   if let Some(value) = head.find_header(AUTHORIZATION) {
     debug!("found authorization header - {}", value);
-    return load_authorization(value, session, records).await.or_else(|e| {
-      warn!("unable to load authorization - {}", e);
-      Ok(Authority::None)
-    });
+    return load_authorization(value, session, records)
+      .await
+      .or_else(|e| {
+        warn!("unable to load authorization - {}", e);
+        Ok(Authority::None)
+      });
   }
 
   debug!("no authorization header present");
@@ -136,13 +148,17 @@ impl ContextBuilder {
   }
 
   pub fn with_authority(self, auth: Authority) -> Result<Context> {
-    let _config = self._config.ok_or(errors::e("missing configuraiton from context"))?;
+    let _config = self
+      ._config
+      .ok_or(errors::e("missing configuraiton from context"))?;
 
     let _records = self
       ._records
       .ok_or(errors::e("missing records configuration for context"))?;
 
-    let _jobs = self._jobs.ok_or(errors::e("missing job configuration for context"))?;
+    let _jobs = self
+      ._jobs
+      .ok_or(errors::e("missing job configuration for context"))?;
 
     let _session = self
       ._session

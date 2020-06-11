@@ -9,7 +9,11 @@ fn warn_and_stringify<E: std::error::Error>(e: E) -> String {
 }
 
 async fn count_remaining_rounds(game_id: &String, context: &Context<'_>) -> Result<i64, String> {
-  let mut conn = context.records.acquire().await.map_err(warn_and_stringify)?;
+  let mut conn = context
+    .records
+    .acquire()
+    .await
+    .map_err(warn_and_stringify)?;
   query_file!(
     "src/bin/kruwk/handlers/games/data-store/count-remaining-rounds.sql",
     game_id
@@ -24,7 +28,11 @@ async fn count_remaining_rounds(game_id: &String, context: &Context<'_>) -> Resu
 }
 
 async fn count_votes(round_id: &String, context: &Context<'_>) -> Result<i64, String> {
-  let mut conn = context.records.acquire().await.map_err(warn_and_stringify)?;
+  let mut conn = context
+    .records
+    .acquire()
+    .await
+    .map_err(warn_and_stringify)?;
   query_file!(
     "src/bin/kruwk/handlers/games/data-store/count-votes-for-round.sql",
     round_id
@@ -54,7 +62,11 @@ async fn round_completion_result(
     return Ok(None);
   }
 
-  let mut conn = context.records.acquire().await.map_err(warn_and_stringify)?;
+  let mut conn = context
+    .records
+    .acquire()
+    .await
+    .map_err(warn_and_stringify)?;
   query_file!(
     "src/bin/kruwk/handlers/games/data-store/complete-round.sql",
     details.round_id
@@ -63,7 +75,10 @@ async fn round_completion_result(
   .await
   .map_err(warn_and_stringify)?;
 
-  info!("creating round placement results for '{}'", details.round_id);
+  info!(
+    "creating round placement results for '{}'",
+    details.round_id
+  );
 
   query_file!(
     "src/bin/kruwk/handlers/games/data-store/create-round-placements.sql",
@@ -151,12 +166,18 @@ async fn count_entries(round_id: &String, records: &RecordStore) -> Result<i64, 
   .ok_or(format!("Unable to count entries for round '{}'", round_id,))
 }
 
-async fn check_round_fullfillment_inner(round_id: &String, records: &RecordStore) -> Result<u8, String> {
+async fn check_round_fullfillment_inner(
+  round_id: &String,
+  records: &RecordStore,
+) -> Result<u8, String> {
   info!("checking fullfillment of round '{}'", round_id);
   let entry_count = count_entries(round_id, records).await?;
   let member_count = count_members(round_id, records).await?;
 
-  debug!("found member count {} and entry count {}", member_count, entry_count);
+  debug!(
+    "found member count {} and entry count {}",
+    member_count, entry_count
+  );
 
   let diff = member_count as u8 - entry_count as u8;
 
@@ -166,14 +187,17 @@ async fn check_round_fullfillment_inner(round_id: &String, records: &RecordStore
   }
 
   let mut conn = records.acquire().await.map_err(warn_and_stringify)?;
-  let (position, game_id) = query_file!("src/bin/kruwk/handlers/games/data-store/fulfill-round.sql", round_id)
-    .fetch_all(&mut conn)
-    .await
-    .map_err(warn_and_stringify)?
-    .into_iter()
-    .nth(0)
-    .map(|row| (row.position, row.game_id))
-    .ok_or(format!("Unable to mark round '{}' fulfilled", round_id))?;
+  let (position, game_id) = query_file!(
+    "src/bin/kruwk/handlers/games/data-store/fulfill-round.sql",
+    round_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(warn_and_stringify)?
+  .into_iter()
+  .nth(0)
+  .map(|row| (row.position, row.game_id))
+  .ok_or(format!("Unable to mark round '{}' fulfilled", round_id))?;
 
   debug!("updated position {} in game '{}'", position, game_id);
 
@@ -236,7 +260,9 @@ mod test {
     assert_eq!(
       res,
       interchange::jobs::Job::CheckRoundFulfillment(interchange::jobs::CheckRoundFulfillment {
-        result: Some(Err(String::from("Unable to count entries for round 'not-valid'"))),
+        result: Some(Err(String::from(
+          "Unable to count entries for round 'not-valid'"
+        ))),
         ..job
       })
     );

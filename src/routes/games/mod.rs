@@ -24,7 +24,10 @@ struct EntryVotePayload {
 
 // Route
 // POST /round-entry-votes
-pub async fn create_entry_vote<R: AsyncRead + Unpin>(context: &Context, reader: &mut R) -> Result<Response> {
+pub async fn create_entry_vote<R: AsyncRead + Unpin>(
+  context: &Context,
+  reader: &mut R,
+) -> Result<Response> {
   let uid = match context.authority() {
     Authority::None => return Ok(Response::unauthorized().cors(context.cors())),
     Authority::User { id, .. } => id,
@@ -86,7 +89,11 @@ struct RoundAuthority {
   round_id: String,
 }
 
-async fn authority_for_round(context: &Context, round_id: &String, user_id: &String) -> Result<Option<RoundAuthority>> {
+async fn authority_for_round(
+  context: &Context,
+  round_id: &String,
+  user_id: &String,
+) -> Result<Option<RoundAuthority>> {
   let mut conn = context.records_connection().await?;
   let possible = query_file!(
     "src/routes/games/data-store/game-for-entry-creation.sql",
@@ -116,7 +123,10 @@ struct EntryPayload {
 
 // Route
 // POST /round-entries
-pub async fn create_entry<R: AsyncRead + Unpin>(context: &Context, reader: &mut R) -> Result<Response> {
+pub async fn create_entry<R: AsyncRead + Unpin>(
+  context: &Context,
+  reader: &mut R,
+) -> Result<Response> {
   let uid = match context.authority() {
     Authority::None => return Ok(Response::unauthorized().cors(context.cors())),
     Authority::User { id, .. } => id,
@@ -159,7 +169,10 @@ pub async fn create_entry<R: AsyncRead + Unpin>(context: &Context, reader: &mut 
       context
         .jobs()
         .queue(&interchange::jobs::Job::CheckRoundFulfillment(
-          interchange::jobs::CheckRoundFulfillment { round_id, result: None },
+          interchange::jobs::CheckRoundFulfillment {
+            round_id,
+            result: None,
+          },
         ))
         .await
         .map(|_id| Response::default().cors(context.cors()))
@@ -185,7 +198,10 @@ fn log_err<E: std::error::Error>(error: E) -> E {
   error
 }
 
-async fn members_for_game(context: &Context, id: &String) -> Result<Vec<interchange::http::GameMember>> {
+async fn members_for_game(
+  context: &Context,
+  id: &String,
+) -> Result<Vec<interchange::http::GameMember>> {
   let mut conn = context.records_connection().await?;
 
   query_file!("src/routes/games/data-store/load-game-members.sql", id)
@@ -206,7 +222,10 @@ async fn members_for_game(context: &Context, id: &String) -> Result<Vec<intercha
     .collect()
 }
 
-async fn rounds_for_game(context: &Context, id: &String) -> Result<Vec<interchange::http::GameRound>> {
+async fn rounds_for_game(
+  context: &Context,
+  id: &String,
+) -> Result<Vec<interchange::http::GameRound>> {
   let mut conn = context.records_connection().await?;
   query_file!("src/routes/games/data-store/load-rounds.sql", id)
     .fetch_all(&mut conn)
@@ -260,29 +279,45 @@ async fn placements_for_game(
 
 async fn find_game(context: &Context, uid: &String, gid: &String) -> Result<Response> {
   let mut conn = context.records_connection().await?;
-  let details = query_file!("src/routes/games/data-store/load-game-details.sql", gid, uid)
-    .fetch_all(&mut conn)
-    .await
-    .map_err(errors::humanize_error)?
-    .into_iter()
-    .nth(0)
-    .map(|row| {
-      Ok(GameDetails {
-        game_id: row.game_id,
-        created_at: row
-          .created_at
-          .ok_or_else(|| errors::e(format!("Unable to parse created timestamp for game '{}'", gid)))?,
-        name: row.game_name,
-        ended_at: row.ended_at,
-      })
+  let details = query_file!(
+    "src/routes/games/data-store/load-game-details.sql",
+    gid,
+    uid
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(errors::humanize_error)?
+  .into_iter()
+  .nth(0)
+  .map(|row| {
+    Ok(GameDetails {
+      game_id: row.game_id,
+      created_at: row.created_at.ok_or_else(|| {
+        errors::e(format!(
+          "Unable to parse created timestamp for game '{}'",
+          gid
+        ))
+      })?,
+      name: row.game_name,
+      ended_at: row.ended_at,
     })
-    .unwrap_or_else(|| Err(errors::e(format!("Unable to find game '{}'", gid))))?;
+  })
+  .unwrap_or_else(|| Err(errors::e(format!("Unable to find game '{}'", gid))))?;
 
-  debug!("found game '{}', created '{:?}'", details.game_id, details.created_at);
+  debug!(
+    "found game '{}', created '{:?}'",
+    details.game_id, details.created_at
+  );
 
-  let rounds = rounds_for_game(context, &details.game_id).await.map_err(log_err)?;
-  let members = members_for_game(context, &details.game_id).await.map_err(log_err)?;
-  let placements = placements_for_game(context, &details.game_id).await.map_err(log_err)?;
+  let rounds = rounds_for_game(context, &details.game_id)
+    .await
+    .map_err(log_err)?;
+  let members = members_for_game(context, &details.game_id)
+    .await
+    .map_err(log_err)?;
+  let placements = placements_for_game(context, &details.game_id)
+    .await
+    .map_err(log_err)?;
 
   let result = interchange::http::GameDetails {
     id: details.game_id.clone(),
@@ -334,26 +369,33 @@ where
   let CreatePayload { lobby_id } = deserialize::<CreatePayload>(&contents)?;
 
   let mut conn = context.records_connection().await?;
-  let maybe_lobby = query_file!("src/routes/lobbies/data-store/load-lobby-detail.sql", lobby_id, uid)
-    .fetch_all(&mut conn)
-    .await
-    .map_err(errors::humanize_error)?
-    .into_iter()
-    .nth(0);
+  let maybe_lobby = query_file!(
+    "src/routes/lobbies/data-store/load-lobby-detail.sql",
+    lobby_id,
+    uid
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(errors::humanize_error)?
+  .into_iter()
+  .nth(0);
 
   if let None = maybe_lobby {
     warn!("no lobby '{}' for user '{}'", lobby_id, uid);
     return Ok(Response::bad_request(INVALID_LOBBY).cors(context.cors()));
   }
 
-  let member_count = query_file!("src/routes/games/data-store/count-lobby-members.sql", lobby_id)
-    .fetch_all(&mut conn)
-    .await
-    .map_err(errors::humanize_error)?
-    .into_iter()
-    .nth(0)
-    .and_then(|row| row.member_count)
-    .unwrap_or(0);
+  let member_count = query_file!(
+    "src/routes/games/data-store/count-lobby-members.sql",
+    lobby_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(errors::humanize_error)?
+  .into_iter()
+  .nth(0)
+  .and_then(|row| row.member_count)
+  .unwrap_or(0);
 
   if let 0..=1 = member_count {
     warn!("not enough members for '{}'", lobby_id);

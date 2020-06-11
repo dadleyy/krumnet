@@ -3,8 +3,9 @@ extern crate http;
 use async_std::io::{timeout, Read};
 use async_std::prelude::*;
 use http::header::{
-  HeaderName, ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
-  ACCESS_CONTROL_REQUEST_HEADERS, CONTENT_LENGTH, CONTENT_TYPE, LOCATION,
+  HeaderName, ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS,
+  ACCESS_CONTROL_ALLOW_ORIGIN, ACCESS_CONTROL_REQUEST_HEADERS, CONTENT_LENGTH, CONTENT_TYPE,
+  LOCATION,
 };
 use log::{debug, info};
 use std::io::{Error, ErrorKind, Result};
@@ -110,11 +111,19 @@ impl Response {
   }
 
   pub fn failed() -> Self {
-    Response(StatusCode::BAD_REQUEST, HeaderMap::default(), Payload::Empty)
+    Response(
+      StatusCode::BAD_REQUEST,
+      HeaderMap::default(),
+      Payload::Empty,
+    )
   }
 
   pub fn unauthorized() -> Self {
-    Response(StatusCode::UNAUTHORIZED, HeaderMap::default(), Payload::Empty)
+    Response(
+      StatusCode::UNAUTHORIZED,
+      HeaderMap::default(),
+      Payload::Empty,
+    )
   }
 
   pub fn not_found() -> Self {
@@ -137,7 +146,10 @@ impl Response {
       format!("{}, {}", AUTHORIZATION, CONTENT_TYPE),
     ));
     header_map.push((ACCESS_CONTROL_REQUEST_HEADERS, CONTENT_TYPE.to_string()));
-    header_map.push((ACCESS_CONTROL_ALLOW_METHODS, "POST, GET, PUT, DELETE".to_string()));
+    header_map.push((
+      ACCESS_CONTROL_ALLOW_METHODS,
+      "POST, GET, PUT, DELETE".to_string(),
+    ));
 
     Response(code, header_map, body)
   }

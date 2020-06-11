@@ -5,7 +5,10 @@ const NAMES: &'static str = include_str!("./data/names.txt");
 const ADJECTIVES: &'static str = include_str!("./data/adjectives.txt");
 
 fn rand_line(target: &'static str, rng: Option<ThreadRng>) -> (String, ThreadRng) {
-  let items = target.split("\n").map(|v| String::from(v)).collect::<Vec<String>>();
+  let items = target
+    .split("\n")
+    .map(|v| String::from(v))
+    .collect::<Vec<String>>();
   let mut gen = rng.unwrap_or_else(thread_rng);
   let index = gen.next_u32() as usize % (items.len() - 1);
   (

@@ -25,7 +25,11 @@ struct RoundDetailRow {
   fulfilled_at: Option<DateTime<Utc>>,
 }
 
-async fn round_details(context: &Context, user_id: &String, round_id: &String) -> Result<RoundDetailRow> {
+async fn round_details(
+  context: &Context,
+  user_id: &String,
+  round_id: &String,
+) -> Result<RoundDetailRow> {
   let mut conn = context.records_connection().await?;
   query_file_as!(
     RoundDetailRow,
@@ -87,7 +91,10 @@ pub async fn find(context: &Context, uri: &Uri) -> Result<Response> {
   Response::ok_json(details).map(|res| res.cors(context.cors()))
 }
 
-async fn votes_for_round(context: &Context, round_id: &String) -> Result<Vec<interchange::http::GameRoundVote>> {
+async fn votes_for_round(
+  context: &Context,
+  round_id: &String,
+) -> Result<Vec<interchange::http::GameRoundVote>> {
   let mut conn = context.records_connection().await?;
   info!("loading votes for round '{}'", round_id);
   query_file_as!(
@@ -100,23 +107,29 @@ async fn votes_for_round(context: &Context, round_id: &String) -> Result<Vec<int
   .map_err(log_err)
 }
 
-async fn results_for_round(context: &Context, round_id: &String) -> Result<Vec<interchange::http::GameRoundPlacement>> {
+async fn results_for_round(
+  context: &Context,
+  round_id: &String,
+) -> Result<Vec<interchange::http::GameRoundPlacement>> {
   let mut conn = context.records_connection().await?;
 
-  query_file!("src/routes/rounds/data-store/load-round-results.sql", round_id)
-    .fetch_all(&mut conn)
-    .await
-    .map_err(log_err)?
-    .into_iter()
-    .map(|row| {
-      Ok(interchange::http::GameRoundPlacement {
-        id: row.result_id,
-        user_name: row.user_name,
-        user_id: row.user_id,
-        place: row.round_place,
-      })
+  query_file!(
+    "src/routes/rounds/data-store/load-round-results.sql",
+    round_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(log_err)?
+  .into_iter()
+  .map(|row| {
+    Ok(interchange::http::GameRoundPlacement {
+      id: row.result_id,
+      user_name: row.user_name,
+      user_id: row.user_id,
+      place: row.round_place,
     })
-    .collect()
+  })
+  .collect()
 }
 
 async fn entries_for_round(
@@ -125,29 +138,32 @@ async fn entries_for_round(
   round_id: &String,
 ) -> Result<Vec<interchange::http::GameRoundEntry>> {
   let mut conn = context.records_connection().await?;
-  query_file!("src/routes/rounds/data-store/load-round-entries.sql", round_id)
-    .fetch_all(&mut conn)
-    .await
-    .map_err(log_err)?
-    .into_iter()
-    .map(|row| {
-      let fulfilled = row.fulfilled;
-      let entry = match (&row.user_id == active_user_id) || fulfilled.is_some() {
-        true => row.entry,
-        false => None,
-      };
+  query_file!(
+    "src/routes/rounds/data-store/load-round-entries.sql",
+    round_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(log_err)?
+  .into_iter()
+  .map(|row| {
+    let fulfilled = row.fulfilled;
+    let entry = match (&row.user_id == active_user_id) || fulfilled.is_some() {
+      true => row.entry,
+      false => None,
+    };
 
-      Ok(interchange::http::GameRoundEntry {
-        id: row.entry_id,
-        round_id: row.round_id,
-        member_id: row.member_id,
-        created: row
-          .created_at
-          .ok_or_else(|| errors::e("Unable to load round entry created timestamp"))?,
-        user_id: row.user_id,
-        user_name: row.user_name,
-        entry,
-      })
+    Ok(interchange::http::GameRoundEntry {
+      id: row.entry_id,
+      round_id: row.round_id,
+      member_id: row.member_id,
+      created: row
+        .created_at
+        .ok_or_else(|| errors::e("Unable to load round entry created timestamp"))?,
+      user_id: row.user_id,
+      user_name: row.user_name,
+      entry,
     })
-    .collect()
+  })
+  .collect()
 }
