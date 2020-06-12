@@ -1,14 +1,17 @@
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
+// Queued when a user leaves a lobby or game explicitly, jobs of this kind will attempt to create
+// game round entries for any rounds that do not already have one. On success, the job's result
+// will be populated with an array of round ids that were filled.
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub struct CleanupGameMembershipContext {
+pub struct CleanupGameMembership {
   pub user_id: String,
   pub member_id: String,
   pub lobby_id: String,
   pub game_id: String,
-  pub result: Option<Result<String, String>>,
+  pub result: Option<Result<Vec<String>, String>>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
@@ -57,7 +60,7 @@ pub enum Job {
   CreateGame(CreateGame),
   CleanupLobbyMembership(CleanupLobbyMembership),
   CheckRoundCompletion(CheckRoundCompletion),
-  CleanupGameMembership(CleanupGameMembershipContext),
+  CleanupGameMembership(CleanupGameMembership),
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

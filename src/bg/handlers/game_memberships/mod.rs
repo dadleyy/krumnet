@@ -1,7 +1,7 @@
 use log::{debug, info, warn};
 use sqlx::query_file;
 
-use crate::interchange::jobs::CleanupGameMembershipContext as CleanupContext;
+use crate::interchange::jobs::CleanupGameMembership as CleanupContext;
 use crate::{bg::context::Context, interchange};
 
 fn log_and_serialize<E: std::error::Error>(error: E) -> String {
@@ -25,8 +25,16 @@ async fn round_ids_without_entries(
   .map(|result| result.into_iter().map(|row| row.round_id).collect())
 }
 
-pub async fn cleanup_inner(context: &Context, details: &CleanupContext) -> Result<String, String> {
+async fn cleanup_inner(context: &Context, details: &CleanupContext) -> Result<Vec<String>, String> {
   let round_ids = round_ids_without_entries(context, details).await?;
+
+  if round_ids.len() == 0 {
+    info!(
+      "member '{}' left game w/ no outstanding entries",
+      details.member_id
+    );
+    return Ok(round_ids);
+  }
 
   info!("found rounds w/o entries - {:?}", round_ids);
 
@@ -57,12 +65,12 @@ pub async fn cleanup_inner(context: &Context, details: &CleanupContext) -> Resul
     context.jobs.queue(&job).await.map_err(log_and_serialize)?;
   }
 
-  Ok(format!("{} auto entries created", round_ids.len()))
+  Ok(round_ids)
 }
 
 pub async fn cleanup(details: &CleanupContext, context: &Context) -> interchange::jobs::Job {
   debug!("cleaning up game member '{}'", details.member_id);
-  interchange::jobs::Job::CleanupGameMembership(interchange::jobs::CleanupGameMembershipContext {
+  interchange::jobs::Job::CleanupGameMembership(interchange::jobs::CleanupGameMembership {
     result: Some(cleanup_inner(context, details).await),
     ..details.clone()
   })
@@ -205,11 +213,34 @@ mod tests {
     .expect("missing row id")
   }
 
+  async fn cleanup_job(context: &Context, job: &interchange::jobs::CleanupGameMembership) {
+    cleanup_game(&context, &job.game_id).await;
+    cleanup_lobby(&context, &job.lobby_id).await;
+    cleanup_user(&context, &job.user_id).await;
+  }
+
+  async fn get_job_context(email: &str) -> (Context, interchange::jobs::CleanupGameMembership) {
+    let context = get_test_context().await;
+    let uid = make_user(&context, email).await;
+    let lid = make_lobby(&context, &uid).await;
+    let gid = make_game(&context, &uid, &lid).await;
+    let mid = find_member(&context, &uid, &gid).await;
+    let details = interchange::jobs::CleanupGameMembership {
+      user_id: uid.clone(),
+      member_id: mid.clone(),
+      lobby_id: lid.clone(),
+      game_id: gid.clone(),
+      result: None,
+    };
+    (context, details)
+  }
+
   #[test]
   fn invalid_round_ids() {
     block_on(async {
       let context = get_test_context().await;
-      let details = interchange::jobs::CleanupGameMembershipContext {
+
+      let details = interchange::jobs::CleanupGameMembership {
         user_id: String::from("not-exists"),
         member_id: String::from("not-exists"),
         lobby_id: String::from("not-exists"),
@@ -235,7 +266,7 @@ mod tests {
       .await;
       let lid = make_lobby(&context, &uid).await;
 
-      let details = interchange::jobs::CleanupGameMembershipContext {
+      let details = interchange::jobs::CleanupGameMembership {
         user_id: uid.clone(),
         member_id: String::from("not-exists"),
         lobby_id: lid.clone(),
@@ -254,256 +285,123 @@ mod tests {
   }
 
   #[test]
-  fn game_with_empty_rounds() {
+  fn count_with_empty_rounds() {
     block_on(async {
-      let context = get_test_context().await;
-      let uid = make_user(
-        &context,
-        "krumnet.bg.handlers.game_memeberships.test.with_empty_rounds",
-      )
-      .await;
-      let lid = make_lobby(&context, &uid).await;
-      let gid = make_game(&context, &uid, &lid).await;
+      let (context, job) = get_job_context("bg.game_memeberships.count_with_empty_rounds").await;
 
-      let details = interchange::jobs::CleanupGameMembershipContext {
-        user_id: uid.clone(),
-        member_id: String::from("not-exists"),
-        lobby_id: lid.clone(),
-        game_id: gid.clone(),
-        result: None,
-      };
-
-      let result = round_ids_without_entries(&context, &details)
+      let result = round_ids_without_entries(&context, &job)
         .await
         .expect("failed query");
 
       assert_eq!(result.len(), 3);
-      cleanup_game(&context, &gid).await;
-      cleanup_lobby(&context, &lid).await;
-      cleanup_user(&context, &uid).await;
+      cleanup_job(&context, &job).await;
     });
   }
 
   #[test]
-  fn game_with_some_entries() {
+  fn count_with_some_entries() {
     block_on(async {
-      let context = get_test_context().await;
-      let uid = make_user(
-        &context,
-        "krumnet.bg.handlers.game_memeberships.test.with_some_entries",
-      )
-      .await;
-      let lid = make_lobby(&context, &uid).await;
-      let gid = make_game(&context, &uid, &lid).await;
-      let mid = find_member(&context, &uid, &gid).await;
+      let (context, job) = get_job_context("bg.game_memberships.count_with_some_entries").await;
+      make_entry(&context, &job.member_id, &job.user_id, &job.game_id, 0).await;
 
-      make_entry(&context, &mid, &uid, &gid, 0).await;
-
-      let details = interchange::jobs::CleanupGameMembershipContext {
-        user_id: uid.clone(),
-        member_id: mid.clone(),
-        lobby_id: lid.clone(),
-        game_id: gid.clone(),
-        result: None,
-      };
-
-      let result = round_ids_without_entries(&context, &details)
+      let result = round_ids_without_entries(&context, &job)
         .await
         .expect("failed query");
 
       assert_eq!(result.len(), 2);
-      cleanup_game(&context, &gid).await;
-      cleanup_lobby(&context, &lid).await;
-      cleanup_user(&context, &uid).await;
+      cleanup_job(&context, &job).await;
     });
   }
 
   #[test]
-  fn game_with_most_entries() {
+  fn count_with_most_entries() {
     block_on(async {
-      let context = get_test_context().await;
-      let uid = make_user(
-        &context,
-        "krumnet.bg.handlers.game_memeberships.test.with_most_entries",
-      )
-      .await;
-      let lid = make_lobby(&context, &uid).await;
-      let gid = make_game(&context, &uid, &lid).await;
-      let mid = find_member(&context, &uid, &gid).await;
+      let (context, job) = get_job_context("bg.game_memberships.count_most_entries").await;
+      make_entry(&context, &job.member_id, &job.user_id, &job.game_id, 0).await;
+      make_entry(&context, &job.member_id, &job.user_id, &job.game_id, 1).await;
 
-      make_entry(&context, &mid, &uid, &gid, 0).await;
-      make_entry(&context, &mid, &uid, &gid, 1).await;
-
-      let details = interchange::jobs::CleanupGameMembershipContext {
-        user_id: uid.clone(),
-        member_id: mid.clone(),
-        lobby_id: lid.clone(),
-        game_id: gid.clone(),
-        result: None,
-      };
-
-      let result = round_ids_without_entries(&context, &details)
+      let result = round_ids_without_entries(&context, &job)
         .await
         .expect("failed query");
 
       assert_eq!(result.len(), 1);
-      cleanup_game(&context, &gid).await;
-      cleanup_lobby(&context, &lid).await;
-      cleanup_user(&context, &uid).await;
+      cleanup_job(&context, &job).await;
     });
   }
 
   #[test]
-  fn game_with_all_entries() {
+  fn count_with_all_entries() {
     block_on(async {
-      let context = get_test_context().await;
-      let uid = make_user(
-        &context,
-        "krumnet.bg.handlers.game_memeberships.test.with_all_entries",
-      )
-      .await;
-      let lid = make_lobby(&context, &uid).await;
-      let gid = make_game(&context, &uid, &lid).await;
-      let mid = find_member(&context, &uid, &gid).await;
+      let (context, job) = get_job_context("bg.game_memberships.count_all_entries").await;
 
-      make_entry(&context, &mid, &uid, &gid, 0).await;
-      make_entry(&context, &mid, &uid, &gid, 1).await;
-      make_entry(&context, &mid, &uid, &gid, 2).await;
+      make_entry(&context, &job.member_id, &job.user_id, &job.game_id, 0).await;
+      make_entry(&context, &job.member_id, &job.user_id, &job.game_id, 1).await;
+      make_entry(&context, &job.member_id, &job.user_id, &job.game_id, 2).await;
 
-      let details = interchange::jobs::CleanupGameMembershipContext {
-        user_id: uid.clone(),
-        member_id: mid.clone(),
-        lobby_id: lid.clone(),
-        game_id: gid.clone(),
-        result: None,
-      };
-
-      let result = round_ids_without_entries(&context, &details)
+      let result = round_ids_without_entries(&context, &job)
         .await
         .expect("failed query");
 
       assert_eq!(result.len(), 0);
-      cleanup_game(&context, &gid).await;
-      cleanup_lobby(&context, &lid).await;
-      cleanup_user(&context, &uid).await;
+      cleanup_job(&context, &job).await;
     });
   }
 
   #[test]
   fn cleanup_with_all_missing() {
     block_on(async {
-      let context = get_test_context().await;
-      let uid = make_user(
-        &context,
-        "krumnet.bg.handlers.game_memeberships.test.cleanup_with_all_missing",
-      )
-      .await;
-      let lid = make_lobby(&context, &uid).await;
-      let gid = make_game(&context, &uid, &lid).await;
-      let mid = find_member(&context, &uid, &gid).await;
+      let (context, job) = get_job_context("bg.game_memberships.cleanup_with_all_missing").await;
 
-      assert_eq!(count_entries(&context, &mid).await, 0);
+      assert_eq!(count_entries(&context, &job.member_id).await, 0);
 
-      let details = interchange::jobs::CleanupGameMembershipContext {
-        user_id: uid.clone(),
-        member_id: mid.clone(),
-        lobby_id: lid.clone(),
-        game_id: gid.clone(),
-        result: None,
-      };
+      cleanup_inner(&context, &job).await.expect("failed query");
 
-      cleanup_inner(&context, &details)
-        .await
-        .expect("failed query");
+      assert_eq!(count_entries(&context, &job.member_id).await, 3);
 
-      assert_eq!(count_entries(&context, &mid).await, 3);
-
-      assert_eq!(true, true);
-      cleanup_game(&context, &gid).await;
-      cleanup_lobby(&context, &lid).await;
-      cleanup_user(&context, &uid).await;
+      cleanup_job(&context, &job).await
     });
   }
 
   #[test]
   fn cleanup_with_some_missing() {
     block_on(async {
-      let context = get_test_context().await;
-      let uid = make_user(
-        &context,
-        "krumnet.bg.handlers.game_memeberships.test.cleanup_with_some_missing",
-      )
-      .await;
-      let lid = make_lobby(&context, &uid).await;
-      let gid = make_game(&context, &uid, &lid).await;
-      let mid = find_member(&context, &uid, &gid).await;
+      let (context, job) = get_job_context("bg.game_memberships.cleanup_with_some_missing").await;
 
-      make_entry(&context, &mid, &uid, &gid, 0).await;
-      make_entry(&context, &mid, &uid, &gid, 1).await;
-      assert_eq!(count_entries(&context, &mid).await, 2);
+      make_entry(&context, &job.member_id, &job.user_id, &job.game_id, 0).await;
+      make_entry(&context, &job.member_id, &job.user_id, &job.game_id, 1).await;
 
-      let details = interchange::jobs::CleanupGameMembershipContext {
-        user_id: uid.clone(),
-        member_id: mid.clone(),
-        lobby_id: lid.clone(),
-        game_id: gid.clone(),
-        result: None,
-      };
+      assert_eq!(count_entries(&context, &job.member_id).await, 2);
 
-      cleanup_inner(&context, &details)
-        .await
-        .expect("failed query");
+      cleanup_inner(&context, &job).await.expect("failed query");
+      assert_eq!(count_entries(&context, &job.member_id).await, 3);
 
-      assert_eq!(count_entries(&context, &mid).await, 3);
-
-      assert_eq!(true, true);
-      cleanup_game(&context, &gid).await;
-      cleanup_lobby(&context, &lid).await;
-      cleanup_user(&context, &uid).await;
+      cleanup_job(&context, &job).await
     });
   }
 
   #[test]
   fn cleanup_with_some_missing_isolated() {
     block_on(async {
-      let context = get_test_context().await;
-      let uid = make_user(
-        &context,
-        "krumnet.bg.handlers.game_memeberships.test.cleanup_with_some_missing_isolated",
-      )
-      .await;
-      let lid = make_lobby(&context, &uid).await;
-      let gid = make_game(&context, &uid, &lid).await;
-      let mid = find_member(&context, &uid, &gid).await;
+      let (context, job) =
+        get_job_context("bg.game_memeberships.cleanup_with_some_missing_isolated").await;
 
-      let ogid = make_game(&context, &uid, &lid).await;
-      let omid = find_member(&context, &uid, &ogid).await;
+      let ogid = make_game(&context, &job.user_id, &job.lobby_id).await;
+      let omid = find_member(&context, &job.user_id, &ogid).await;
 
-      make_entry(&context, &mid, &uid, &gid, 0).await;
-      make_entry(&context, &mid, &uid, &gid, 1).await;
+      make_entry(&context, &job.member_id, &job.user_id, &job.game_id, 0).await;
+      make_entry(&context, &job.member_id, &job.user_id, &job.game_id, 1).await;
+
       assert_eq!(count_entries(&context, &omid).await, 0);
-      assert_eq!(count_entries(&context, &mid).await, 2);
+      assert_eq!(count_entries(&context, &job.member_id).await, 2);
 
-      let details = interchange::jobs::CleanupGameMembershipContext {
-        user_id: uid.clone(),
-        member_id: mid.clone(),
-        lobby_id: lid.clone(),
-        game_id: gid.clone(),
-        result: None,
-      };
+      cleanup_inner(&context, &job).await.expect("failed query");
 
-      cleanup_inner(&context, &details)
-        .await
-        .expect("failed query");
-
-      assert_eq!(count_entries(&context, &mid).await, 3);
+      assert_eq!(count_entries(&context, &job.member_id).await, 3);
       assert_eq!(count_entries(&context, &omid).await, 0);
 
       assert_eq!(true, true);
-      cleanup_game(&context, &gid).await;
       cleanup_game(&context, &ogid).await;
-      cleanup_lobby(&context, &lid).await;
-      cleanup_user(&context, &uid).await;
+      cleanup_job(&context, &job).await
     });
   }
 }

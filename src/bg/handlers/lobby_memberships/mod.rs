@@ -86,7 +86,7 @@ pub async fn cleanup_inner(
   let left_games = leave_games(member_id, context).await?;
 
   let jobs = left_games.iter().map(|g| {
-    let details = interchange::jobs::CleanupGameMembershipContext {
+    let details = interchange::jobs::CleanupGameMembership {
       user_id: g.user_id.clone(),
       game_id: g.game_id.clone(),
       member_id: g.game_member_id.clone(),
