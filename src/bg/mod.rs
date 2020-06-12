@@ -39,6 +39,31 @@ pub mod test_helpers {
 
   pub async fn cleanup_game(context: &Context, game_id: &String) {
     let mut conn = context.records.acquire().await.expect("no record store");
+
+    query!(
+      "delete from krumnet.game_member_round_placement_results as results where results.game_id = $1",
+      game_id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete game votes");
+
+    query!(
+      "delete from krumnet.game_member_placement_results as results where results.game_id = $1",
+      game_id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete game votes");
+
+    query!(
+      "delete from krumnet.game_round_entry_votes as votes where votes.game_id = $1",
+      game_id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete game votes");
+
     query!(
       "delete from krumnet.game_round_entries as entries where entries.game_id = $1",
       game_id

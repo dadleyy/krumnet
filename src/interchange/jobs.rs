@@ -26,10 +26,21 @@ pub struct CheckRoundFulfillment {
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
+pub enum CheckRoundCompletionResult {
+  Incomplete,
+  Intermediate(Vec<String>),
+  Final(Vec<String>),
+}
+
+// Queued when a round vote is created, jobs of this kind will attempt to count how many votes are
+// missing in a given round. If that number is 0, the job will set the completed_at timestamp on
+// the round and create round + game results as necessary.
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub struct CheckRoundCompletion {
   pub round_id: String,
   pub game_id: String,
-  pub result: Option<Result<Option<String>, String>>,
+  pub result: Option<Result<CheckRoundCompletionResult, String>>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
