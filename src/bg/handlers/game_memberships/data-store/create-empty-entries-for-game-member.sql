@@ -4,29 +4,15 @@ insert into
 select
   cast($1 as varchar),
   rounds.id,
-  members.id,
+  cast($2 as varchar),
   rounds.game_id,
   rounds.lobby_id,
   '',
   true
 from
   krumnet.game_rounds as rounds
-left join
-  krumnet.game_round_entries as entries
-on
-  entries.round_id = rounds.id
-left join
-  krumnet.game_memberships as members
-on
-  members.game_id = rounds.game_id
 where
-  members.user_id = $1
-group by
-  rounds.id, members.id
-having
-  count(entries.id) = 0
-order by
-  rounds.position asc
+  rounds.id = any($3)
 returning
   id,
   game_id,

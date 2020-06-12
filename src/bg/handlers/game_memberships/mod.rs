@@ -25,16 +25,18 @@ async fn round_ids_without_entries(
   .map(|result| result.into_iter().map(|row| row.round_id).collect())
 }
 
-pub async fn cleanup_inner(details: &CleanupContext, context: &Context) -> Result<String, String> {
+pub async fn cleanup_inner(context: &Context, details: &CleanupContext) -> Result<String, String> {
   let round_ids = round_ids_without_entries(context, details).await?;
 
   info!("found rounds w/o entries - {:?}", round_ids);
 
   let mut conn = context.records.acquire().await.map_err(log_and_serialize)?;
 
-  let mut round_ids = query_file!(
+  let round_ids = query_file!(
     "src/bg/handlers/game_memberships/data-store/create-empty-entries-for-game-member.sql",
-    &details.user_id
+    &details.user_id,
+    &details.member_id,
+    &round_ids
   )
   .fetch_all(&mut conn)
   .await
@@ -43,21 +45,16 @@ pub async fn cleanup_inner(details: &CleanupContext, context: &Context) -> Resul
   .map(|row| row.round_id)
   .collect::<Vec<String>>();
 
-  round_ids.dedup();
-
-  debug!("ids - {:?}", round_ids);
-
   for id in &round_ids {
-    let job =
-      interchange::jobs::Job::CheckRoundFulfillment(interchange::jobs::CheckRoundFulfillment {
-        round_id: id.clone(),
-        result: None,
-      });
+    let job_context = interchange::jobs::CheckRoundFulfillment {
+      round_id: id.clone(),
+      result: None,
+    };
+    let job = interchange::jobs::Job::CheckRoundFulfillment(job_context);
+
     info!("queing round completion check job for round {:?}", job);
-    context.jobs.queue(&job).await.map_err(|e| {
-      warn!("unable to queue round completion job - {}", e);
-      format!("{}", e)
-    })?;
+
+    context.jobs.queue(&job).await.map_err(log_and_serialize)?;
   }
 
   Ok(format!("{} auto entries created", round_ids.len()))
@@ -66,14 +63,14 @@ pub async fn cleanup_inner(details: &CleanupContext, context: &Context) -> Resul
 pub async fn cleanup(details: &CleanupContext, context: &Context) -> interchange::jobs::Job {
   debug!("cleaning up game member '{}'", details.member_id);
   interchange::jobs::Job::CleanupGameMembership(interchange::jobs::CleanupGameMembershipContext {
-    result: Some(cleanup_inner(details, context).await),
+    result: Some(cleanup_inner(context, details).await),
     ..details.clone()
   })
 }
 
 #[cfg(test)]
 mod tests {
-  use super::round_ids_without_entries;
+  use super::{cleanup_inner, round_ids_without_entries};
   use crate::{
     bg::{
       context::Context,
@@ -84,6 +81,20 @@ mod tests {
   };
   use async_std::task::block_on;
   use sqlx::query;
+
+  async fn count_entries(context: &Context, member_id: &String) -> i64 {
+    let mut conn = context.records.acquire().await.expect("no record store");
+    query!(
+        "select count(*) as count from krumnet.game_round_entries as entries where entries.member_id = $1",
+        member_id
+    ).fetch_all(&mut conn)
+        .await
+        .expect("unable to count")
+        .into_iter()
+        .nth(0)
+        .and_then(|row| row.count)
+        .expect("unable to count")
+  }
 
   async fn find_member(context: &Context, user_id: &String, game_id: &String) -> String {
     let mut conn = context.records.acquire().await.expect("no record store");
@@ -373,6 +384,124 @@ mod tests {
 
       assert_eq!(result.len(), 0);
       cleanup_game(&context, &gid).await;
+      cleanup_lobby(&context, &lid).await;
+      cleanup_user(&context, &uid).await;
+    });
+  }
+
+  #[test]
+  fn cleanup_with_all_missing() {
+    block_on(async {
+      let context = get_test_context().await;
+      let uid = make_user(
+        &context,
+        "krumnet.bg.handlers.game_memeberships.test.cleanup_with_all_missing",
+      )
+      .await;
+      let lid = make_lobby(&context, &uid).await;
+      let gid = make_game(&context, &uid, &lid).await;
+      let mid = find_member(&context, &uid, &gid).await;
+
+      assert_eq!(count_entries(&context, &mid).await, 0);
+
+      let details = interchange::jobs::CleanupGameMembershipContext {
+        user_id: uid.clone(),
+        member_id: mid.clone(),
+        lobby_id: lid.clone(),
+        game_id: gid.clone(),
+        result: None,
+      };
+
+      cleanup_inner(&context, &details)
+        .await
+        .expect("failed query");
+
+      assert_eq!(count_entries(&context, &mid).await, 3);
+
+      assert_eq!(true, true);
+      cleanup_game(&context, &gid).await;
+      cleanup_lobby(&context, &lid).await;
+      cleanup_user(&context, &uid).await;
+    });
+  }
+
+  #[test]
+  fn cleanup_with_some_missing() {
+    block_on(async {
+      let context = get_test_context().await;
+      let uid = make_user(
+        &context,
+        "krumnet.bg.handlers.game_memeberships.test.cleanup_with_some_missing",
+      )
+      .await;
+      let lid = make_lobby(&context, &uid).await;
+      let gid = make_game(&context, &uid, &lid).await;
+      let mid = find_member(&context, &uid, &gid).await;
+
+      make_entry(&context, &mid, &uid, &gid, 0).await;
+      make_entry(&context, &mid, &uid, &gid, 1).await;
+      assert_eq!(count_entries(&context, &mid).await, 2);
+
+      let details = interchange::jobs::CleanupGameMembershipContext {
+        user_id: uid.clone(),
+        member_id: mid.clone(),
+        lobby_id: lid.clone(),
+        game_id: gid.clone(),
+        result: None,
+      };
+
+      cleanup_inner(&context, &details)
+        .await
+        .expect("failed query");
+
+      assert_eq!(count_entries(&context, &mid).await, 3);
+
+      assert_eq!(true, true);
+      cleanup_game(&context, &gid).await;
+      cleanup_lobby(&context, &lid).await;
+      cleanup_user(&context, &uid).await;
+    });
+  }
+
+  #[test]
+  fn cleanup_with_some_missing_isolated() {
+    block_on(async {
+      let context = get_test_context().await;
+      let uid = make_user(
+        &context,
+        "krumnet.bg.handlers.game_memeberships.test.cleanup_with_some_missing_isolated",
+      )
+      .await;
+      let lid = make_lobby(&context, &uid).await;
+      let gid = make_game(&context, &uid, &lid).await;
+      let mid = find_member(&context, &uid, &gid).await;
+
+      let ogid = make_game(&context, &uid, &lid).await;
+      let omid = find_member(&context, &uid, &ogid).await;
+
+      make_entry(&context, &mid, &uid, &gid, 0).await;
+      make_entry(&context, &mid, &uid, &gid, 1).await;
+      assert_eq!(count_entries(&context, &omid).await, 0);
+      assert_eq!(count_entries(&context, &mid).await, 2);
+
+      let details = interchange::jobs::CleanupGameMembershipContext {
+        user_id: uid.clone(),
+        member_id: mid.clone(),
+        lobby_id: lid.clone(),
+        game_id: gid.clone(),
+        result: None,
+      };
+
+      cleanup_inner(&context, &details)
+        .await
+        .expect("failed query");
+
+      assert_eq!(count_entries(&context, &mid).await, 3);
+      assert_eq!(count_entries(&context, &omid).await, 0);
+
+      assert_eq!(true, true);
+      cleanup_game(&context, &gid).await;
+      cleanup_game(&context, &ogid).await;
       cleanup_lobby(&context, &lid).await;
       cleanup_user(&context, &uid).await;
     });
