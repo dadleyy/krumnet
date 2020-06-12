@@ -2,21 +2,18 @@ use log::{debug, info, warn};
 use sqlx::query_file;
 
 use crate::interchange::jobs::CleanupGameMembershipContext as CleanupContext;
-use crate::{bg::context::Context, errors, interchange};
+use crate::{bg::context::Context, interchange};
 
-fn log_and_humanize<E>(error: E) -> std::io::Error
-where
-  E: std::error::Error,
-{
+fn log_and_serialize<E: std::error::Error>(error: E) -> String {
   warn!("{}", error);
-  errors::humanize_error(error)
+  format!("{}", error)
 }
 
 async fn round_ids_without_entries(
   context: &Context,
   details: &CleanupContext,
-) -> Result<Vec<String>, std::io::Error> {
-  let mut conn = context.records.acquire().await.map_err(log_and_humanize)?;
+) -> Result<Vec<String>, String> {
+  let mut conn = context.records.acquire().await.map_err(log_and_serialize)?;
   query_file!(
     "src/bg/handlers/game_memberships/data-store/get-round-ids.sql",
     details.user_id,
@@ -24,17 +21,16 @@ async fn round_ids_without_entries(
   )
   .fetch_all(&mut conn)
   .await
-  .map_err(log_and_humanize)
+  .map_err(log_and_serialize)
   .map(|result| result.into_iter().map(|row| row.round_id).collect())
 }
 
 pub async fn cleanup_inner(details: &CleanupContext, context: &Context) -> Result<String, String> {
-  let mut conn = context
-    .records
-    .acquire()
-    .await
-    .map_err(log_and_humanize)
-    .map_err(|e| format!("{}", e))?;
+  let round_ids = round_ids_without_entries(context, details).await?;
+
+  info!("found rounds w/o entries - {:?}", round_ids);
+
+  let mut conn = context.records.acquire().await.map_err(log_and_serialize)?;
 
   let mut round_ids = query_file!(
     "src/bg/handlers/game_memberships/data-store/create-empty-entries-for-game-member.sql",
@@ -42,10 +38,7 @@ pub async fn cleanup_inner(details: &CleanupContext, context: &Context) -> Resul
   )
   .fetch_all(&mut conn)
   .await
-  .map_err(|e| {
-    warn!("unable to create empty entries - {}", e);
-    format!("{}", e)
-  })?
+  .map_err(log_and_serialize)?
   .into_iter()
   .map(|row| row.round_id)
   .collect::<Vec<String>>();
@@ -235,7 +228,37 @@ mod tests {
       )
       .await;
       let lid = make_lobby(&context, &uid).await;
-      println!("CREATED LOBBY '{}'", lid);
+      let gid = make_game(&context, &uid, &lid).await;
+
+      let details = interchange::jobs::CleanupGameMembershipContext {
+        user_id: uid.clone(),
+        member_id: String::from("not-exists"),
+        lobby_id: lid.clone(),
+        game_id: gid.clone(),
+        result: None,
+      };
+
+      let result = round_ids_without_entries(&context, &details)
+        .await
+        .expect("failed query");
+
+      assert_eq!(result.len(), 3);
+      cleanup_game(&context, &gid).await;
+      cleanup_lobby(&context, &lid).await;
+      cleanup_user(&context, &uid).await;
+    });
+  }
+
+  #[test]
+  fn game_with_some_entries() {
+    block_on(async {
+      let context = get_test_context().await;
+      let uid = make_user(
+        &context,
+        "krumnet.bg.handlers.game_memeberships.test.with_some_entries",
+      )
+      .await;
+      let lid = make_lobby(&context, &uid).await;
       let gid = make_game(&context, &uid, &lid).await;
 
       let details = interchange::jobs::CleanupGameMembershipContext {
