@@ -51,7 +51,7 @@ async fn round_completion_result(
   context: &Context,
 ) -> Result<Option<String>, String> {
   info!("checking round completion for round '{}'", details.round_id);
-  let member_count = count_members(&details.round_id, &context).await?;
+  let member_count = count_members(&context, &details.round_id).await?;
   let vote_count = count_votes(&details.round_id, context).await?;
 
   if vote_count != member_count {

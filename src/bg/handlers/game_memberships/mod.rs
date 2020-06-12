@@ -80,11 +80,7 @@ pub async fn cleanup(details: &CleanupContext, context: &Context) -> interchange
 mod tests {
   use super::{cleanup_inner, round_ids_without_entries};
   use crate::{
-    bg::{
-      context::Context,
-      handlers::lobbies::{make_game as create_game, make_lobby as create_lobby},
-      test_helpers::get_test_context,
-    },
+    bg::{context::Context, test_helpers},
     interchange,
   };
   use async_std::task::block_on;
@@ -112,76 +108,6 @@ mod tests {
       .await.expect("cant find member").into_iter().nth(0).map(|r| r.id).expect("unable to find member")
   }
 
-  async fn cleanup_user(context: &Context, user_id: &String) {
-    let mut conn = context.records.acquire().await.expect("no record store");
-    query!("delete from krumnet.users where id = $1", user_id)
-      .execute(&mut conn)
-      .await
-      .expect("unable to delete");
-  }
-
-  async fn cleanup_lobby(context: &Context, lobby_id: &String) {
-    let mut conn = context.records.acquire().await.expect("no record store");
-    query!(
-      "delete from krumnet.lobby_memberships where lobby_id = $1",
-      lobby_id
-    )
-    .execute(&mut conn)
-    .await
-    .expect("unable to delete");
-    query!("delete from krumnet.lobbies where id = $1", lobby_id)
-      .execute(&mut conn)
-      .await
-      .expect("unable to delete");
-  }
-
-  async fn cleanup_game(context: &Context, game_id: &String) {
-    let mut conn = context.records.acquire().await.expect("no record store");
-    query!(
-      "delete from krumnet.game_round_entries as entries where entries.game_id = $1",
-      game_id
-    )
-    .execute(&mut conn)
-    .await
-    .expect("unable to delete game entries");
-
-    query!(
-      "delete from krumnet.game_rounds as rounds where rounds.game_id = $1",
-      game_id
-    )
-    .execute(&mut conn)
-    .await
-    .expect("unable to delete game rounds");
-
-    query!(
-      "delete from krumnet.game_memberships as members where members.game_id = $1",
-      game_id
-    )
-    .execute(&mut conn)
-    .await
-    .expect("unable to delete game members");
-
-    query!(
-      "delete from krumnet.games as games where games.id = $1",
-      game_id
-    )
-    .execute(&mut conn)
-    .await
-    .expect("unable to delete game");
-  }
-
-  async fn make_game(context: &Context, user_id: &String, lobby_id: &String) -> String {
-    create_game(&context.records, &String::from("job-id"), user_id, lobby_id)
-      .await
-      .expect("unable to create game")
-  }
-
-  async fn make_lobby(context: &Context, user_id: &String) -> String {
-    create_lobby(&context.records, user_id, user_id)
-      .await
-      .expect("unable to create lobby")
-  }
-
   async fn make_entry(
     context: &Context,
     member_id: &String,
@@ -198,32 +124,17 @@ mod tests {
     ", user_id, member_id, game_id, position).execute(&mut conn).await.expect("unable to create entry");
   }
 
-  async fn make_user(context: &Context, email: &str) -> String {
-    let mut conn = context.records.acquire().await.expect("no record store");
-    query!(
-      "insert into krumnet.users (default_email, name) values ($1, $1) returning id ",
-      email
-    )
-    .fetch_all(&mut conn)
-    .await
-    .expect("unable to insert user")
-    .into_iter()
-    .nth(0)
-    .map(|row| row.id)
-    .expect("missing row id")
-  }
-
   async fn cleanup_job(context: &Context, job: &interchange::jobs::CleanupGameMembership) {
-    cleanup_game(&context, &job.game_id).await;
-    cleanup_lobby(&context, &job.lobby_id).await;
-    cleanup_user(&context, &job.user_id).await;
+    test_helpers::cleanup_game(&context, &job.game_id).await;
+    test_helpers::cleanup_lobby(&context, &job.lobby_id).await;
+    test_helpers::cleanup_user(&context, &job.user_id).await;
   }
 
   async fn get_job_context(email: &str) -> (Context, interchange::jobs::CleanupGameMembership) {
-    let context = get_test_context().await;
-    let uid = make_user(&context, email).await;
-    let lid = make_lobby(&context, &uid).await;
-    let gid = make_game(&context, &uid, &lid).await;
+    let context = test_helpers::get_test_context().await;
+    let uid = test_helpers::make_user(&context, email).await;
+    let lid = test_helpers::make_lobby(&context, &uid).await;
+    let gid = test_helpers::make_game(&context, &uid, &lid).await;
     let mid = find_member(&context, &uid, &gid).await;
     let details = interchange::jobs::CleanupGameMembership {
       user_id: uid.clone(),
@@ -238,7 +149,7 @@ mod tests {
   #[test]
   fn invalid_round_ids() {
     block_on(async {
-      let context = get_test_context().await;
+      let context = test_helpers::get_test_context().await;
 
       let details = interchange::jobs::CleanupGameMembership {
         user_id: String::from("not-exists"),
@@ -258,13 +169,13 @@ mod tests {
   #[test]
   fn no_games_for_lobby() {
     block_on(async {
-      let context = get_test_context().await;
-      let uid = make_user(
+      let context = test_helpers::get_test_context().await;
+      let uid = test_helpers::make_user(
         &context,
         "krumnet.bg.handlers.game_memeberships.no_games_for_lobby",
       )
       .await;
-      let lid = make_lobby(&context, &uid).await;
+      let lid = test_helpers::make_lobby(&context, &uid).await;
 
       let details = interchange::jobs::CleanupGameMembership {
         user_id: uid.clone(),
@@ -279,8 +190,8 @@ mod tests {
         .expect("failed query");
 
       assert_eq!(result, Vec::new() as Vec<String>);
-      cleanup_lobby(&context, &lid).await;
-      cleanup_user(&context, &uid).await;
+      test_helpers::cleanup_lobby(&context, &lid).await;
+      test_helpers::cleanup_user(&context, &uid).await;
     });
   }
 
@@ -401,7 +312,7 @@ mod tests {
       let (context, job) =
         get_job_context("bg.game_memeberships.cleanup_with_some_missing_isolated").await;
 
-      let ogid = make_game(&context, &job.user_id, &job.lobby_id).await;
+      let ogid = test_helpers::make_game(&context, &job.user_id, &job.lobby_id).await;
       let omid = find_member(&context, &job.user_id, &ogid).await;
 
       make_entry(&context, &job.member_id, &job.user_id, &job.game_id, 0).await;
@@ -416,7 +327,7 @@ mod tests {
       assert_eq!(count_entries(&context, &omid).await, 0);
 
       assert_eq!(true, true);
-      cleanup_game(&context, &ogid).await;
+      test_helpers::cleanup_game(&context, &ogid).await;
       cleanup_job(&context, &job).await
     });
   }

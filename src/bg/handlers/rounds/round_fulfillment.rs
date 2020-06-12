@@ -30,7 +30,7 @@ pub async fn count_entries(round_id: &String, context: &Context) -> Result<i64, 
 async fn check_round_fulfillment_inner(round_id: &String, context: &Context) -> Result<u8, String> {
   info!("checking fulfillment of round '{}'", round_id);
   let entry_count = count_entries(round_id, context).await?;
-  let member_count = count_members(round_id, context).await?;
+  let member_count = count_members(context, round_id).await?;
 
   debug!(
     "found member count {} and entry count {}",
