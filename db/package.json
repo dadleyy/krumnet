@@ -3,15 +3,19 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
+    "dump": "node ./bin/dump.js",
     "migrate:list": "knex migrate:list",
     "migrate:make": "knex migrate:make",
     "migrate:all": "knex migrate:latest",
     "migrate:up": "knex migrate:up",
     "migrate:down": "knex migrate:down",
     "migrate:rollback": "knex migrate:rollback",
+    "migrate:rollback-all": "knex migrate:rollback -- --all",
     "migrate:reset": "npm run migrate:rollback -- --all && npm run migrate:all",
     "seed:make": "knex seed:make",
-    "seed:run": "knex seed:run"
+    "seed:run": "knex seed:run",
+    "reset:all": "npm run migrate:reset && npm run seed:run",
+    "reset:all-dump": "npm run migrate:reset && npm run seed:run && npm run dump"
   },
   "author": "",
   "license": "ISC",
@@ -19,6 +23,7 @@
     "debug": "^4.1.1",
     "dotenv": "^8.2.0",
     "knex": "^0.21.1",
-    "pg": "^8.2.1"
+    "pg": "^8.2.1",
+    "pg-connection-string": "^2.2.3"
   }
 }

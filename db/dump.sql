@@ -76,11 +76,11 @@ SET default_with_oids = false;
 --
 
 CREATE TABLE krumnet.game_member_placement_results (
-    id character varying(255) DEFAULT public.uuid_generate_v4() NOT NULL,
-    user_id character varying(255) NOT NULL,
-    lobby_id character varying(255) NOT NULL,
-    member_id character varying(255) NOT NULL,
-    game_id character varying(255) NOT NULL,
+    id character varying(36) DEFAULT public.uuid_generate_v4() NOT NULL,
+    user_id character varying(36) NOT NULL,
+    lobby_id character varying(36) NOT NULL,
+    member_id character varying(36) NOT NULL,
+    game_id character varying(36) NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
     place integer NOT NULL,
     vote_count integer DEFAULT 0 NOT NULL
@@ -94,12 +94,12 @@ ALTER TABLE krumnet.game_member_placement_results OWNER TO postgres;
 --
 
 CREATE TABLE krumnet.game_member_round_placement_results (
-    id character varying(255) DEFAULT public.uuid_generate_v4() NOT NULL,
-    user_id character varying(255) NOT NULL,
-    lobby_id character varying(255) NOT NULL,
-    member_id character varying(255) NOT NULL,
-    game_id character varying(255) NOT NULL,
-    round_id character varying(255) NOT NULL,
+    id character varying(36) DEFAULT public.uuid_generate_v4() NOT NULL,
+    user_id character varying(36) NOT NULL,
+    lobby_id character varying(36) NOT NULL,
+    member_id character varying(36) NOT NULL,
+    game_id character varying(36) NOT NULL,
+    round_id character varying(36) NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
     place integer NOT NULL,
     vote_count integer DEFAULT 0 NOT NULL

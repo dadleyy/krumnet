@@ -36,7 +36,7 @@ pub async fn identify(context: &Context) -> Result<Response> {
   };
 
   info!("loading sesison for user {}", uid);
-  let mut conn = context.records().q().await?;
+  let mut conn = context.records_connection().await?;
 
   query_file!("src/data-store/user-for-session.sql", uid)
     .fetch_all(&mut conn)

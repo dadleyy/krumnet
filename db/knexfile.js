@@ -3,36 +3,41 @@ const path = require("path");
 const debug = require("debug");
 const log = debug("krumnet:knexfile");
 
-require("dotenv").config({ path: path.join(__dirname, '../.env') })
+require("dotenv").config({ path: path.join(__dirname, "../.env") })
+
+const TEST_FILE = path.resolve(__dirname, "../krumnet-config.example.json");
+const DEFAULT_FILE = path.resolve(__dirname, "../krumnet-config.json");
 
 const KEY_MAPPING = {
   dbname: "database",
 };
 
-function parsePostgresString(input) {
-  return input.split(' ').reduce((acc, part) => {
-    const [key, value] = part.split('=');
-    return { ...acc, [KEY_MAPPING[key] || key]: value };
-  }, {});
+function handleFailedFile(error) {
+    log("unable to load file '%s'", error);
+    return Buffer.from("{}");
 }
 
-async function fromConfigFile() {
-  const configFile = process.env["KRUMNET_TEST_CONFIG_FILE"] || path.resolve(__dirname, "../krumnet-config.json");
-  log("attempting to load '%s'", configFile);
-  const configData = await fs.promises.readFile(configFile);
+async function fromConfigFile(file) {
+  const configData = await fs.promises.readFile(file).catch(handleFailedFile);
   const config = JSON.parse(configData.toString("utf8"));
-  return parsePostgresString(config["record_store"]["postgres_uri"]);
+  return config["record_store"] ? config["record_store"]["postgres_uri"] : null;
 }
 
 module.exports = async function() {
-  const connection = process.env['DATABASE_URL'] || await fromConfigFile();
-  log("loaded config - '%j'", connection);
+  const fromEnv = process.env["DATABASE_URL"];
+  const file = process.env["NODE_ENV"] === "test" ? TEST_FILE : DEFAULT_FILE;
+  const configUri = await fromConfigFile(file);
+  const connection = configUri || fromEnv;
+
+  log("  file: '%s'", configUri);
+  log("   env: '%s'", fromEnv);
+  log(" using: '%s'", connection);
 
   return {
     client: "pg",
     connection,
     migrations: {
-      tableName: "knex_migrations"
+      tableName: "knex_migrations",
     },
   };
 };

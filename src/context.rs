@@ -1,6 +1,6 @@
 use async_std::sync::Arc;
 use elaine::Head;
-use log::{info, warn};
+use log::{debug, warn};
 use sqlx::query_file;
 use std::io::Result;
 
@@ -44,7 +44,7 @@ impl Context {
   }
 
   pub async fn records_connection(&self) -> Result<RecordConnection> {
-    self._records.q().await
+    self._records.acquire().await
   }
 
   pub fn config(&self) -> &Configuration {
@@ -78,7 +78,7 @@ pub async fn load_authorization(
   records: &RecordStore,
 ) -> Result<Authority> {
   let uid = session.get(&token).await?;
-  let mut conn = records.q().await?;
+  let mut conn = records.acquire().await?;
   let tenant = query_file!("src/data-store/user-for-session.sql", uid)
     .fetch_all(&mut conn)
     .await
@@ -88,7 +88,7 @@ pub async fn load_authorization(
     .and_then(|row| {
       let id = row.user_id;
 
-      info!("found user '{:?}'", id);
+      debug!("found user '{:?}'", id);
 
       Some(Authority::User {
         id,
@@ -96,7 +96,6 @@ pub async fn load_authorization(
       })
     });
 
-  info!("loaded tenant from auth header: {:?}", tenant);
   Ok(tenant.unwrap_or(Authority::None))
 }
 
@@ -106,7 +105,7 @@ async fn load_auth(
   records: &RecordStore,
 ) -> Result<Authority> {
   if let Some(value) = head.find_header(AUTHORIZATION) {
-    info!("found authorization header - {}", value);
+    debug!("found authorization header - {}", value);
     return load_authorization(value, session, records)
       .await
       .or_else(|e| {
@@ -115,7 +114,7 @@ async fn load_auth(
       });
   }
 
-  info!("no authorization header present");
+  debug!("no authorization header present");
   Ok(Authority::None)
 }
 
@@ -195,9 +194,9 @@ impl ContextBuilder {
 }
 
 #[cfg(test)]
-mod test_helpers {
+pub mod test_helpers {
   use super::Context;
-  use crate::configuration::load_test_config as load_config;
+  use crate::configuration::test_helpers::load_test_config as load_config;
   use crate::{Authority, JobStore, RecordStore, SessionStore};
   use async_std::task::block_on;
   use std::sync::Arc;

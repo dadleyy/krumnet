@@ -53,7 +53,7 @@ jobs:
       - name: Build worker
         run: cargo build --bin kruwk
       - name: Run tests
-        run: cargo test --verbose -- --nocapture
+        run: cargo test -- --nocapture
         env:
           KRUMNET_TEST_CONFIG_FILE: ci/github-actions/krumnet-config.json
       - name: Print worker version

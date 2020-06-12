@@ -1,5 +1,4 @@
-use super::Context;
-use krumnet::interchange;
+use crate::{bg::context::Context, interchange};
 use log::{debug, info, warn};
 use sqlx::query_file;
 
@@ -8,10 +7,10 @@ fn stringify_error<E: std::fmt::Display>(e: E) -> String {
   format!("{}", e)
 }
 
-async fn count_lobby_members(lobby_id: &String, context: &Context<'_>) -> Result<i64, String> {
-  let mut conn = context.records.q().await.map_err(stringify_error)?;
+async fn count_lobby_members(lobby_id: &String, context: &Context) -> Result<i64, String> {
+  let mut conn = context.records.acquire().await.map_err(stringify_error)?;
   query_file!(
-    "src/bin/kruwk/handlers/lobby_memberships/data-store/count-remaining-lobby-members.sql",
+    "src/bg/handlers/lobby_memberships/data-store/count-remaining-lobby-members.sql",
     lobby_id
   )
   .fetch_all(&mut conn)
@@ -39,13 +38,10 @@ struct LeftGame {
   game_member_id: String,
 }
 
-async fn leave_games(
-  lobby_member_id: &String,
-  context: &Context<'_>,
-) -> Result<Vec<LeftGame>, String> {
-  let mut conn = context.records.q().await.map_err(stringify_error)?;
+async fn leave_games(lobby_member_id: &String, context: &Context) -> Result<Vec<LeftGame>, String> {
+  let mut conn = context.records.acquire().await.map_err(stringify_error)?;
   query_file!(
-    "src/bin/kruwk/handlers/lobby_memberships/data-store/leave-game-member-by-lobby-member.sql",
+    "src/bg/handlers/lobby_memberships/data-store/leave-game-member-by-lobby-member.sql",
     lobby_member_id
   )
   .fetch_all(&mut conn)
@@ -63,10 +59,10 @@ async fn leave_games(
   .collect::<Result<Vec<LeftGame>, String>>()
 }
 
-async fn close_lobby(lobby_id: &String, context: &Context<'_>) -> Result<String, String> {
-  let mut conn = context.records.q().await.map_err(stringify_error)?;
+async fn close_lobby(lobby_id: &String, context: &Context) -> Result<String, String> {
+  let mut conn = context.records.acquire().await.map_err(stringify_error)?;
   query_file!(
-    "src/bin/kruwk/handlers/lobby_memberships/data-store/close-lobby.sql",
+    "src/bg/handlers/lobby_memberships/data-store/close-lobby.sql",
     lobby_id
   )
   .fetch_all(&mut conn)
@@ -84,13 +80,13 @@ async fn close_lobby(lobby_id: &String, context: &Context<'_>) -> Result<String,
 pub async fn cleanup_inner(
   member_id: &String,
   lobby_id: &String,
-  context: &Context<'_>,
+  context: &Context,
 ) -> Result<String, String> {
   let count = count_lobby_members(lobby_id, context).await?;
   let left_games = leave_games(member_id, context).await?;
 
   let jobs = left_games.iter().map(|g| {
-    let details = interchange::jobs::CleanupGameMembershipContext {
+    let details = interchange::jobs::CleanupGameMembership {
       user_id: g.user_id.clone(),
       game_id: g.game_id.clone(),
       member_id: g.game_member_id.clone(),
@@ -120,7 +116,7 @@ pub async fn cleanup_inner(
 pub async fn cleanup(
   job_id: &String,
   details: &interchange::jobs::CleanupLobbyMembership,
-  context: &Context<'_>,
+  context: &Context,
 ) -> interchange::jobs::Job {
   debug!("job '{}', cleanup '{}'", job_id, details.member_id);
 

@@ -96,12 +96,21 @@ impl Response {
   pub fn ok_json<S: serde::Serialize>(data: S) -> Result<Self> {
     let vec = serde_json::to_string(&data)?;
     let mut header_map = HeaderMap::default();
-    info!("building json response");
-    header_map.push((CONTENT_TYPE, "application/json".to_string()));
+    header_map.push((CONTENT_TYPE, "application/json; charset=utf-8".to_string()));
     Ok(Response(StatusCode::OK, header_map, Payload::String(vec)))
   }
 
-  pub fn failed() -> Response {
+  pub fn bad_request<S: std::fmt::Display>(reason: S) -> Self {
+    let mut header_map = HeaderMap::default();
+    header_map.push((CONTENT_TYPE, "text/plain; charset=utf-8".to_string()));
+    Response(
+      StatusCode::BAD_REQUEST,
+      header_map,
+      Payload::String(format!("{}", reason)),
+    )
+  }
+
+  pub fn failed() -> Self {
     Response(
       StatusCode::BAD_REQUEST,
       HeaderMap::default(),
@@ -109,11 +118,19 @@ impl Response {
     )
   }
 
-  pub fn not_found() -> Response {
+  pub fn unauthorized() -> Self {
+    Response(
+      StatusCode::UNAUTHORIZED,
+      HeaderMap::default(),
+      Payload::Empty,
+    )
+  }
+
+  pub fn not_found() -> Self {
     Response(StatusCode::NOT_FOUND, HeaderMap::default(), Payload::Empty)
   }
 
-  pub fn redirect<S: std::fmt::Display>(destination: &S) -> Response {
+  pub fn redirect<S: std::fmt::Display>(destination: &S) -> Self {
     let mut header_map = HeaderMap::default();
     header_map.push((LOCATION, format!("{}", destination)));
     Response(StatusCode::TEMPORARY_REDIRECT, header_map, Payload::Empty)

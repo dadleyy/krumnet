@@ -30,7 +30,7 @@ async fn round_details(
   user_id: &String,
   round_id: &String,
 ) -> Result<RoundDetailRow> {
-  let mut conn = context.records().q().await?;
+  let mut conn = context.records_connection().await?;
   query_file_as!(
     RoundDetailRow,
     "src/routes/rounds/data-store/load-round-details.sql",
@@ -111,7 +111,7 @@ async fn results_for_round(
   context: &Context,
   round_id: &String,
 ) -> Result<Vec<interchange::http::GameRoundPlacement>> {
-  let mut conn = context.records().q().await?;
+  let mut conn = context.records_connection().await?;
 
   query_file!(
     "src/routes/rounds/data-store/load-round-results.sql",
@@ -137,7 +137,7 @@ async fn entries_for_round(
   active_user_id: &String,
   round_id: &String,
 ) -> Result<Vec<interchange::http::GameRoundEntry>> {
-  let mut conn = context.records().q().await?;
+  let mut conn = context.records_connection().await?;
   query_file!(
     "src/routes/rounds/data-store/load-round-entries.sql",
     round_id

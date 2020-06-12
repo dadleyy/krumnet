@@ -105,7 +105,7 @@ async fn make_user(details: &UserInfoPayload, context: &Context) -> Result<Strin
     picture: _,
   } = details;
 
-  let mut conn = context.records().q().await?;
+  let mut conn = context.records_connection().await?;
 
   query_file!(
     "src/data-store/create-user.sql",
@@ -133,7 +133,7 @@ async fn make_user(details: &UserInfoPayload, context: &Context) -> Result<Strin
 // find by the email address and make sure to backfill the google account. If there is still no
 // matching user information, attempt to create a new user and google account.
 async fn find_or_create_user(profile: &UserInfoPayload, context: &Context) -> Result<String> {
-  let mut conn = context.records().q().await?;
+  let mut conn = context.records_connection().await?;
   let id = query_file!("src/data-store/find-user-by-google-id.sql", profile.sub)
     .fetch_all(&mut conn)
     .await

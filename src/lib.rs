@@ -4,18 +4,19 @@ extern crate log;
 
 use std::io::Result;
 use std::marker::Unpin;
-use std::time::SystemTime;
 
 use async_std::io::{Read as AsyncRead, Write as AsyncWrite};
 use async_std::net::TcpListener;
 use async_std::prelude::*;
 use async_std::sync::Arc;
 use async_std::task;
+use chrono::{DateTime, Utc};
 use elaine::{recognize, Head, RequestMethod};
-use log::{debug, info, warn};
+use log::{debug, error as fatal, info, warn};
 use serde::Serialize;
 
 pub mod authority;
+pub mod bg;
 pub mod configuration;
 pub mod constants;
 pub mod context;
@@ -40,14 +41,15 @@ pub use crate::session::Session as SessionStore;
 
 #[derive(Serialize)]
 struct HealthCheckData {
-  time: SystemTime,
+  #[serde(with = "chrono::serde::ts_milliseconds")]
+  time: DateTime<Utc>,
   version: String,
 }
 
 impl Default for HealthCheckData {
   fn default() -> Self {
     HealthCheckData {
-      time: SystemTime::now(),
+      time: Utc::now(),
       version: version::version(),
     }
   }
@@ -75,7 +77,7 @@ where
   let (method, path) = extract_parts(&head)?;
   let uri = path.parse::<Uri>().map_err(errors::humanize_error)?;
 
-  info!("request {} (context: {:?})", uri, &ctx);
+  info!("{:?} {}", method, uri);
 
   let response = match (method, uri.path()) {
     (RequestMethod::OPTIONS, _) => {
@@ -132,7 +134,7 @@ where
     }
   }
   .unwrap_or_else(|e| {
-    warn!("request handler failed - {}", e);
+    fatal!("request handler failed - {}", e);
     Response::failed().cors(ctx.cors())
   });
 
@@ -169,14 +171,14 @@ pub async fn serve(configuration: Configuration) -> Result<()> {
           let result = route(&mut connection, builder).await;
 
           if let Err(e) = result {
-            info!("[warning] unable to handle connection: {:?}", e);
+            warn!("unable to handle connection: {:?}", e);
           }
 
           connection.shutdown(std::net::Shutdown::Both)
         });
       }
       Err(e) => {
-        info!("[warning] invalid connection: {:?}", e);
+        warn!("invalid connection: {:?}", e);
         continue;
       }
     }

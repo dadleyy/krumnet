@@ -171,20 +171,22 @@ pub struct SessionStoreConfiguration {
 }
 
 #[cfg(test)]
-use std::env;
+pub mod test_helpers {
+  use crate::Configuration;
+  use std::env;
+  use std::io::Result;
 
-#[cfg(test)]
-const CONFIG_VAR: &'static str = "KRUMNET_TEST_CONFIG_FILE";
+  const CONFIG_VAR: &'static str = "KRUMNET_TEST_CONFIG_FILE";
 
-#[cfg(test)]
-pub fn load_test_config() -> Result<Configuration, Error> {
-  let path = env::var(CONFIG_VAR).unwrap_or(String::from("krumnet-config.example.json"));
-  Configuration::load(&path)
+  pub fn load_test_config() -> Result<Configuration> {
+    let path = env::var(CONFIG_VAR).unwrap_or(String::from("krumnet-config.example.json"));
+    Configuration::load(&path)
+  }
 }
 
 #[cfg(test)]
 mod test {
-  use crate::configuration::Configuration;
+  use crate::Configuration;
 
   #[test]
   fn from_file_exists() {
