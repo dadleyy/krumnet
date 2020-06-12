@@ -162,10 +162,7 @@ async fn round_completion_result(
     ));
   }
 
-  info!(
-    "found {} members for round (votes: {:?}). {} remaining rounds",
-    member_count, vote_count, count
-  );
+  info!("no rounds for game {}, finalizing", details.game_id);
 
   let placement_ids = create_game_placements(context, &details.game_id).await?;
 
