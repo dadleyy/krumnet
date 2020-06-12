@@ -5,7 +5,7 @@ const log = debug("krumnet:knexfile");
 
 require("dotenv").config({ path: path.join(__dirname, "../.env") })
 
-const TEST_FILE = path.resolve(__dirname, '../krumnet-config.example.json');
+const TEST_FILE = path.resolve(__dirname, "../krumnet-config.example.json");
 const DEFAULT_FILE = path.resolve(__dirname, "../krumnet-config.json");
 
 const KEY_MAPPING = {
@@ -14,13 +14,13 @@ const KEY_MAPPING = {
 
 function handleFailedFile(error) {
     log("unable to load file '%s'", error);
-    return new Buffer('{}');
+    return Buffer.from("{}");
 }
 
 async function fromConfigFile(file) {
   const configData = await fs.promises.readFile(file).catch(handleFailedFile);
   const config = JSON.parse(configData.toString("utf8"));
-  return config["record_store"]["postgres_uri"];
+  return config["record_store"] ? config["record_store"]["postgres_uri"] : null;
 }
 
 module.exports = async function() {
@@ -30,7 +30,7 @@ module.exports = async function() {
   const connection = configUri || fromEnv;
 
   log("  file: '%s'", configUri);
-  log("config: '%s'", fromEnv);
+  log("   env: '%s'", fromEnv);
   log(" using: '%s'", connection);
 
   return {

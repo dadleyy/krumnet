@@ -115,6 +115,47 @@ mod tests {
       .expect("unable to delete");
   }
 
+  async fn cleanup_game(context: &Context, game_id: &String) {
+    let mut conn = context.records.acquire().await.expect("no record store");
+    query!(
+      "delete from krumnet.game_round_entries as entries where entries.game_id = $1",
+      game_id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete game entries");
+
+    query!(
+      "delete from krumnet.game_rounds as rounds where rounds.game_id = $1",
+      game_id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete game rounds");
+
+    query!(
+      "delete from krumnet.game_memberships as members where members.game_id = $1",
+      game_id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete game members");
+
+    query!(
+      "delete from krumnet.games as games where games.id = $1",
+      game_id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete game");
+  }
+
+  async fn make_game(context: &Context, user_id: &String, lobby_id: &String) -> String {
+    create_game(&context.records, &String::from("job-id"), user_id, lobby_id)
+      .await
+      .expect("unable to create game")
+  }
+
   async fn make_lobby(context: &Context, user_id: &String) -> String {
     create_lobby(&context.records, user_id, user_id)
       .await
@@ -194,12 +235,14 @@ mod tests {
       )
       .await;
       let lid = make_lobby(&context, &uid).await;
+      println!("CREATED LOBBY '{}'", lid);
+      let gid = make_game(&context, &uid, &lid).await;
 
       let details = interchange::jobs::CleanupGameMembershipContext {
         user_id: uid.clone(),
         member_id: String::from("not-exists"),
         lobby_id: lid.clone(),
-        game_id: String::from("not-exists"),
+        game_id: gid.clone(),
         result: None,
       };
 
@@ -207,7 +250,8 @@ mod tests {
         .await
         .expect("failed query");
 
-      assert_eq!(result, Vec::new() as Vec<String>);
+      assert_eq!(result.len(), 3);
+      cleanup_game(&context, &gid).await;
       cleanup_lobby(&context, &lid).await;
       cleanup_user(&context, &uid).await;
     });
