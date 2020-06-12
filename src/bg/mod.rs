@@ -71,6 +71,7 @@ pub mod test_helpers {
     .await
     .expect("unable to delete game");
   }
+
   pub async fn make_game(context: &Context, user_id: &String, lobby_id: &String) -> String {
     create_game(&context.records, &String::from("job-id"), user_id, lobby_id)
       .await
