@@ -8,7 +8,7 @@ use std::process::exit;
 
 use krumnet::{
   bg::context::Context,
-  bg::handlers::{game_memberships, games, lobbies, lobby_memberships},
+  bg::handlers::{game_memberships, lobbies, lobby_memberships, rounds},
   interchange::jobs::{Job, QueuedJob},
   version, Configuration, JobStore, RecordStore,
 };
@@ -29,16 +29,14 @@ struct Options {
 
 async fn execute<'a>(ctx: &Context, job: &QueuedJob) -> QueuedJob {
   let job_result = match &job.job {
-    Job::CheckRoundFulfillment(details) => {
-      games::check_round_fullfillment(&details, &ctx.records).await
-    }
+    Job::CheckRoundFulfillment(details) => rounds::check_round_fulfillment(&details, &ctx).await,
     Job::CreateLobby(details) => lobbies::create_lobby(&job.id, &details, &ctx.records).await,
     Job::CleanupLobbyMembership(details) => {
       lobby_memberships::cleanup(&job.id, &details, &ctx).await
     }
     Job::CreateGame(details) => lobbies::create_game(&job.id, &details, &ctx.records).await,
     Job::CleanupGameMembership(details) => game_memberships::cleanup(&details, &ctx).await,
-    Job::CheckRoundCompletion(details) => games::check_round_completion(&details, &ctx).await,
+    Job::CheckRoundCompletion(details) => rounds::check_round_completion(&details, &ctx).await,
   };
 
   QueuedJob {

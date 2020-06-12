@@ -14,12 +14,33 @@ pub struct CleanupGameMembership {
   pub result: Option<Result<Vec<String>, String>>,
 }
 
+// Queued when a round entry is created, jobs of this kind will attempt to count how many entries
+// are _missing_ from the round. If that number is 0, the job will set the fulfilled date on the
+// round and attempt to start the next.
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct CheckRoundFulfillment {
+  pub round_id: String,
+  pub result: Option<Result<u8, String>>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckRoundCompletionResult {
+  Incomplete,
+  Intermediate(Vec<String>),
+  Final(Vec<String>),
+}
+
+// Queued when a round vote is created, jobs of this kind will attempt to count how many votes are
+// missing in a given round. If that number is 0, the job will set the completed_at timestamp on
+// the round and create round + game results as necessary.
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub struct CheckRoundCompletion {
   pub round_id: String,
   pub game_id: String,
-  pub result: Option<Result<Option<String>, String>>,
+  pub result: Option<Result<CheckRoundCompletionResult, String>>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
@@ -43,13 +64,6 @@ pub struct CleanupLobbyMembership {
 pub struct CreateLobby {
   pub creator: String,
   pub result: Option<Result<String, String>>,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub struct CheckRoundFulfillment {
-  pub round_id: String,
-  pub result: Option<Result<u8, String>>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
