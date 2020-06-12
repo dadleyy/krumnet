@@ -142,6 +142,22 @@ mod test {
     (context, test_context)
   }
 
+  async fn is_round_started(context: &Context, round_id: &String) -> bool {
+    let mut conn = context.records.acquire().await.expect("unable to connect");
+    let q = query!(
+      "select rounds.started_at from krumnet.game_rounds as rounds where rounds.id = $1",
+      round_id
+    );
+
+    q.fetch_all(&mut conn)
+      .await
+      .expect("unable to lookup")
+      .into_iter()
+      .nth(0)
+      .map(|row| row.started_at.is_some())
+      .expect("unable to find round")
+  }
+
   async fn is_round_fulfilled(context: &Context, round_id: &String) -> bool {
     let mut conn = context.records.acquire().await.expect("unable to connect");
     let q = query!(
@@ -222,12 +238,15 @@ mod test {
     block_on(async {
       let (context, test_context) = test_context("bg.round_fulfillment.fulfill_when_full").await;
       let round_id = get_round_id(&context, &test_context.game_id, 0).await;
+      let next_round_id = get_round_id(&context, &test_context.game_id, 1).await;
       assert_eq!(is_round_fulfilled(&context, &round_id).await, false);
+      assert_eq!(is_round_started(&context, &next_round_id).await, false);
       create_round_entry(&context, &test_context, &round_id).await;
 
       let result = round_fulfillment_result(&context, &round_id).await;
       assert_eq!(result.is_ok(), true);
       assert_eq!(is_round_fulfilled(&context, &round_id).await, true);
+      assert_eq!(is_round_started(&context, &next_round_id).await, true);
       cleanup_test_context(&context, &test_context).await;
     });
   }
