@@ -10,10 +10,12 @@
     "migrate:up": "knex migrate:up",
     "migrate:down": "knex migrate:down",
     "migrate:rollback": "knex migrate:rollback",
+    "migrate:rollback-all": "knex migrate:rollback -- --all",
     "migrate:reset": "npm run migrate:rollback -- --all && npm run migrate:all",
     "seed:make": "knex seed:make",
     "seed:run": "knex seed:run",
-    "reset:all": "npm run migrate:reset && npm run seed:run"
+    "reset:all": "npm run migrate:reset && npm run seed:run",
+    "reset:all-dump": "npm run migrate:reset && npm run seed:run && npm run dump"
   },
   "author": "",
   "license": "ISC",

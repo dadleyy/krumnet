@@ -38,7 +38,7 @@ async fn find_user(user_id: &String, records: &RecordStore) -> Result<UserInfo, 
   .unwrap_or(Err(format!("Unable to find user '{}'", user_id)))
 }
 
-async fn make_lobby(
+pub async fn make_lobby(
   records: &RecordStore,
   job_id: &String,
   creator: &String,
