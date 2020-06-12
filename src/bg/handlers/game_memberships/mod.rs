@@ -372,9 +372,25 @@ mod tests {
 
       assert_eq!(count_entries(&context, &job.member_id).await, 2);
 
-      cleanup_inner(&context, &job).await.expect("failed query");
-      assert_eq!(count_entries(&context, &job.member_id).await, 3);
+      let round_ids = cleanup_inner(&context, &job).await.expect("failed query");
+      let mut conn = context
+        .records
+        .acquire()
+        .await
+        .expect("unable to get connection");
 
+      let expected_ids = query!(
+          "select rounds.id as id from krumnet.game_rounds as rounds where rounds.game_id = $1 and rounds.position = 2",
+          &job.game_id
+      ).fetch_all(&mut conn)
+          .await
+          .expect("unable to query for rounds")
+          .into_iter()
+          .map(|row| row.id)
+          .collect::<Vec<String>>();
+
+      assert_eq!(round_ids, expected_ids);
+      assert_eq!(count_entries(&context, &job.member_id).await, 3);
       cleanup_job(&context, &job).await
     });
   }
