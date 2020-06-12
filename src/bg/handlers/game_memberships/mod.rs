@@ -83,7 +83,8 @@ mod tests {
   use super::round_ids_without_entries;
   use crate::{
     bg::{
-      context::Context, handlers::lobbies::make_lobby as create_lobby,
+      context::Context,
+      handlers::lobbies::{make_game as create_game, make_lobby as create_lobby},
       test_helpers::get_test_context,
     },
     interchange,
@@ -120,24 +121,19 @@ mod tests {
       .expect("unable to create lobby")
   }
 
-  async fn make_user(context: &Context) -> String {
+  async fn make_user(context: &Context, email: &str) -> String {
     let mut conn = context.records.acquire().await.expect("no record store");
     query!(
-        "
-          insert into
-              krumnet.users (default_email, name)
-          values
-              ('bg.handlers.game_memberships.no_missing_entries', 'bg.handlers.game_memberships.no_missing_entries')
-          returning id
-          "
-      )
-      .fetch_all(&mut conn)
-      .await
-      .expect("unable to insert user")
-      .into_iter()
-      .nth(0)
-      .map(|row| row.id)
-      .expect("missing row id")
+      "insert into krumnet.users (default_email, name) values ($1, $1) returning id ",
+      email
+    )
+    .fetch_all(&mut conn)
+    .await
+    .expect("unable to insert user")
+    .into_iter()
+    .nth(0)
+    .map(|row| row.id)
+    .expect("missing row id")
   }
 
   #[test]
@@ -160,10 +156,43 @@ mod tests {
   }
 
   #[test]
-  fn no_missing_entries() {
+  fn no_games_for_lobby() {
     block_on(async {
       let context = get_test_context().await;
-      let uid = make_user(&context).await;
+      let uid = make_user(
+        &context,
+        "krumnet.bg.handlers.game_memeberships.no_games_for_lobby",
+      )
+      .await;
+      let lid = make_lobby(&context, &uid).await;
+
+      let details = interchange::jobs::CleanupGameMembershipContext {
+        user_id: uid.clone(),
+        member_id: String::from("not-exists"),
+        lobby_id: lid.clone(),
+        game_id: String::from("not-exists"),
+        result: None,
+      };
+
+      let result = round_ids_without_entries(&context, &details)
+        .await
+        .expect("failed query");
+
+      assert_eq!(result, Vec::new() as Vec<String>);
+      cleanup_lobby(&context, &lid).await;
+      cleanup_user(&context, &uid).await;
+    });
+  }
+
+  #[test]
+  fn game_with_empty_rounds() {
+    block_on(async {
+      let context = get_test_context().await;
+      let uid = make_user(
+        &context,
+        "krumnet.bg.handlers.game_memeberships.test.with_empty_rounds",
+      )
+      .await;
       let lid = make_lobby(&context, &uid).await;
 
       let details = interchange::jobs::CleanupGameMembershipContext {

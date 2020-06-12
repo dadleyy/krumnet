@@ -12,8 +12,13 @@ const KEY_MAPPING = {
   dbname: "database",
 };
 
+function handleFailedFile(error) {
+    log("unable to load file '%s'", error);
+    return new Buffer('{}');
+}
+
 async function fromConfigFile(file) {
-  const configData = await fs.promises.readFile(file);
+  const configData = await fs.promises.readFile(file).catch(handleFailedFile);
   const config = JSON.parse(configData.toString("utf8"));
   return config["record_store"]["postgres_uri"];
 }

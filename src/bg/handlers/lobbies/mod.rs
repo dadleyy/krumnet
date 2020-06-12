@@ -71,7 +71,7 @@ pub async fn create_lobby(job_id: &String, details: &CreateLobby, records: &Reco
   })
 }
 
-async fn make_game(
+pub async fn make_game(
   records: &RecordStore,
   job_id: &String,
   creator: &String,
