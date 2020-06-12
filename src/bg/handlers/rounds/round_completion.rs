@@ -1,6 +1,6 @@
 use super::utils::count_members;
 use crate::{bg::context::Context, interchange};
-use log::{info, warn};
+use log::{debug, info, warn};
 use sqlx::query_file;
 
 fn warn_and_stringify<E: std::error::Error>(e: E) -> String {
@@ -46,6 +46,89 @@ async fn count_votes(round_id: &String, context: &Context) -> Result<i64, String
   .unwrap_or(Err(format!("Unable to count remaining rows")))
 }
 
+async fn mark_round_completed(context: &Context, round_id: &String) -> Result<(), String> {
+  let mut conn = context
+    .records
+    .acquire()
+    .await
+    .map_err(warn_and_stringify)?;
+
+  query_file!(
+    "src/bg/handlers/rounds/data-store/complete-round.sql",
+    round_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(warn_and_stringify)?;
+  Ok(())
+}
+
+async fn create_round_placements(
+  context: &Context,
+  round_id: &String,
+) -> Result<Vec<String>, String> {
+  let mut conn = context
+    .records
+    .acquire()
+    .await
+    .map_err(warn_and_stringify)?;
+
+  let placement_ids = query_file!(
+    "src/bg/handlers/rounds/data-store/create-round-placements.sql",
+    round_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(warn_and_stringify)?
+  .into_iter()
+  .map(|row| row.id)
+  .collect();
+
+  Ok(placement_ids)
+}
+
+async fn create_game_placements(
+  context: &Context,
+  game_id: &String,
+) -> Result<Vec<String>, String> {
+  let mut conn = context
+    .records
+    .acquire()
+    .await
+    .map_err(warn_and_stringify)?;
+
+  let placement_ids = query_file!(
+    "src/bg/handlers/rounds/data-store/create-game-placements.sql",
+    game_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(warn_and_stringify)?
+  .into_iter()
+  .map(|row| row.id)
+  .collect();
+
+  Ok(placement_ids)
+}
+
+async fn mark_game_ended(context: &Context, game_id: &String) -> Result<(), String> {
+  let mut conn = context
+    .records
+    .acquire()
+    .await
+    .map_err(warn_and_stringify)?;
+
+  query_file!(
+    "src/bg/handlers/rounds/data-store/mark-game-ended.sql",
+    game_id
+  )
+  .execute(&mut conn)
+  .await
+  .map_err(warn_and_stringify)?;
+
+  Ok(())
+}
+
 async fn round_completion_result(
   context: &Context,
   details: &interchange::jobs::CheckRoundCompletion,
@@ -62,35 +145,11 @@ async fn round_completion_result(
     return Ok(interchange::jobs::CheckRoundCompletionResult::Incomplete);
   }
 
-  let mut conn = context
-    .records
-    .acquire()
-    .await
-    .map_err(warn_and_stringify)?;
+  debug!("round looks complete, marking");
+  mark_round_completed(context, &details.round_id).await?;
 
-  query_file!(
-    "src/bg/handlers/rounds/data-store/complete-round.sql",
-    details.round_id
-  )
-  .fetch_all(&mut conn)
-  .await
-  .map_err(warn_and_stringify)?;
-
-  info!(
-    "creating round placement results for '{}'",
-    details.round_id
-  );
-
-  let placement_ids = query_file!(
-    "src/bg/handlers/rounds/data-store/create-round-placements.sql",
-    details.round_id
-  )
-  .fetch_all(&mut conn)
-  .await
-  .map_err(warn_and_stringify)?
-  .into_iter()
-  .map(|row| row.id)
-  .collect();
+  info!("creating round-placement for '{}'", details.round_id);
+  let placement_ids = create_round_placements(context, &details.round_id).await?;
 
   info!("round '{}' placement results finished", details.round_id);
 
@@ -108,27 +167,11 @@ async fn round_completion_result(
     member_count, vote_count, count
   );
 
-  let placement_ids = query_file!(
-    "src/bg/handlers/rounds/data-store/create-game-placements.sql",
-    details.game_id
-  )
-  .fetch_all(&mut conn)
-  .await
-  .map_err(warn_and_stringify)?
-  .into_iter()
-  .map(|row| row.id)
-  .collect::<Vec<String>>();
+  let placement_ids = create_game_placements(context, &details.game_id).await?;
 
   info!("created placement results - {:?}", placement_ids);
 
-  query_file!(
-    "src/bg/handlers/rounds/data-store/mark-game-ended.sql",
-    details.game_id
-  )
-  .execute(&mut conn)
-  .await
-  .map_err(warn_and_stringify)?;
-
+  mark_game_ended(&context, &details.game_id).await?;
   Ok(interchange::jobs::CheckRoundCompletionResult::Final(
     placement_ids,
   ))
