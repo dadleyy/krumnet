@@ -236,12 +236,14 @@ mod test {
 
   async fn get_round_id(context: &Context, game_id: &String, position: i32) -> String {
     let mut conn = context.records.acquire().await.expect("unable to connect");
-    let q = query!(
+    let round_query = query!(
           "select rounds.id from krumnet.game_rounds as rounds where rounds.game_id = $1 and rounds.position = $2",
           game_id,
           position
       );
-    q.fetch_all(&mut conn)
+
+    round_query
+      .fetch_all(&mut conn)
       .await
       .expect("unable to query")
       .into_iter()
