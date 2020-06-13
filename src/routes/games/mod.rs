@@ -22,6 +22,54 @@ struct EntryVotePayload {
   pub entry_id: String,
 }
 
+#[derive(Debug)]
+struct RoundAuthority {
+  lobby_id: String,
+  game_id: String,
+  member_id: String,
+  user_id: String,
+  round_id: String,
+}
+
+async fn available_entry_for_vote(
+  context: &Context,
+  authority: &RoundAuthority,
+  entry_id: &String,
+) -> Result<Option<String>> {
+  let mut conn = context.records_connection().await?;
+
+  let query_result = query_file!(
+    "src/routes/games/data-store/available-entry-for-vote.sql",
+    entry_id,
+    &authority.user_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(errors::humanize_error)?;
+
+  Ok(query_result.into_iter().nth(0).map(|row| row.id))
+}
+
+async fn create_vote_for_entry(
+  context: &Context,
+  authority: &RoundAuthority,
+  entry_id: &String,
+) -> Result<Option<String>> {
+  let mut conn = context.records_connection().await?;
+
+  let query_result = query_file!(
+    "src/routes/games/data-store/create-round-entry-vote.sql",
+    entry_id,
+    authority.member_id,
+    authority.user_id,
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(errors::humanize_error)?;
+
+  Ok(query_result.into_iter().nth(0).map(|row| row.id))
+}
+
 // Route
 // POST /round-entry-votes
 pub async fn create_entry_vote<R: AsyncRead + Unpin>(
@@ -43,17 +91,27 @@ pub async fn create_entry_vote<R: AsyncRead + Unpin>(
     }
   };
 
+  let entry_id = match available_entry_for_vote(context, &authority, &payload.entry_id).await? {
+    Some(id) => id,
+    None => {
+      warn!("user '{}' cant vote for '{}'", uid, payload.entry_id);
+      return Ok(Response::bad_request("errors.vote_for_self").cors(context.cors()));
+    }
+  };
+
   info!(
-    "user {} voting for entry '{}' for round '{}'",
-    authority.user_id, payload.entry_id, authority.round_id
+    "user {} voting for '{}'",
+    authority.user_id, payload.entry_id
   );
 
+  /*
   let mut conn = context.records_connection().await?;
 
   let attempt = query_file!(
     "src/routes/games/data-store/create-round-entry-vote.sql",
     payload.entry_id,
-    authority.member_id
+    authority.member_id,
+    uid,
   )
   .fetch_all(&mut conn)
   .await
@@ -61,32 +119,30 @@ pub async fn create_entry_vote<R: AsyncRead + Unpin>(
   .into_iter()
   .nth(0)
   .map(|row| row.id);
+  */
 
-  let vote_id = match attempt {
+  let vote_id = match create_vote_for_entry(context, &authority, &entry_id).await? {
     Some(e) => e,
-    None => return Ok(Response::not_found().cors(context.cors())),
+    None => {
+      warn!("user '{}' unable to vote for '{}'", uid, payload.entry_id);
+      return Ok(Response::not_found().cors(context.cors()));
+    }
   };
 
   info!("vote creation attempt: {:?}, queing job", vote_id);
+
   let job_context = interchange::jobs::CheckRoundCompletion {
     round_id: authority.round_id.clone(),
     game_id: authority.game_id.clone(),
     result: None,
   };
+
   context
     .jobs()
     .queue(&interchange::jobs::Job::CheckRoundCompletion(job_context))
     .await?;
 
   return Ok(Response::default().cors(context.cors()));
-}
-
-struct RoundAuthority {
-  lobby_id: String,
-  game_id: String,
-  member_id: String,
-  user_id: String,
-  round_id: String,
 }
 
 async fn authority_for_round(
