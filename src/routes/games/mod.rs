@@ -22,6 +22,54 @@ struct EntryVotePayload {
   pub entry_id: String,
 }
 
+#[derive(Debug)]
+struct RoundAuthority {
+  lobby_id: String,
+  game_id: String,
+  member_id: String,
+  user_id: String,
+  round_id: String,
+}
+
+async fn available_entry_for_vote(
+  context: &Context,
+  authority: &RoundAuthority,
+  entry_id: &String,
+) -> Result<Option<String>> {
+  let mut conn = context.records_connection().await?;
+
+  let query_result = query_file!(
+    "src/routes/games/data-store/available-entry-for-vote.sql",
+    entry_id,
+    &authority.user_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(errors::humanize_error)?;
+
+  Ok(query_result.into_iter().nth(0).map(|row| row.id))
+}
+
+async fn create_vote_for_entry(
+  context: &Context,
+  authority: &RoundAuthority,
+  entry_id: &String,
+) -> Result<Option<String>> {
+  let mut conn = context.records_connection().await?;
+
+  let query_result = query_file!(
+    "src/routes/games/data-store/create-round-entry-vote.sql",
+    entry_id,
+    authority.member_id,
+    authority.user_id,
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(errors::humanize_error)?;
+
+  Ok(query_result.into_iter().nth(0).map(|row| row.id))
+}
+
 // Route
 // POST /round-entry-votes
 pub async fn create_entry_vote<R: AsyncRead + Unpin>(
@@ -43,50 +91,38 @@ pub async fn create_entry_vote<R: AsyncRead + Unpin>(
     }
   };
 
-  info!(
-    "user {} voting for entry '{}' for round '{}'",
-    authority.user_id, payload.entry_id, authority.round_id
-  );
+  let entry_id = match available_entry_for_vote(context, &authority, &payload.entry_id).await? {
+    Some(id) => id,
+    None => {
+      warn!("user '{}' cant vote for '{}'", uid, payload.entry_id);
+      return Ok(Response::bad_request("errors.vote_for_self").cors(context.cors()));
+    }
+  };
 
-  let mut conn = context.records_connection().await?;
+  info!("user {:?} voting for '{}'", authority, payload.entry_id);
 
-  let attempt = query_file!(
-    "src/routes/games/data-store/create-round-entry-vote.sql",
-    payload.entry_id,
-    authority.member_id
-  )
-  .fetch_all(&mut conn)
-  .await
-  .map_err(errors::humanize_error)?
-  .into_iter()
-  .nth(0)
-  .map(|row| row.id);
-
-  let vote_id = match attempt {
+  let vote_id = match create_vote_for_entry(context, &authority, &entry_id).await? {
     Some(e) => e,
-    None => return Ok(Response::not_found().cors(context.cors())),
+    None => {
+      warn!("user '{}' unable to vote for '{}'", uid, payload.entry_id);
+      return Ok(Response::not_found().cors(context.cors()));
+    }
   };
 
   info!("vote creation attempt: {:?}, queing job", vote_id);
+
   let job_context = interchange::jobs::CheckRoundCompletion {
     round_id: authority.round_id.clone(),
     game_id: authority.game_id.clone(),
     result: None,
   };
+
   context
     .jobs()
     .queue(&interchange::jobs::Job::CheckRoundCompletion(job_context))
     .await?;
 
   return Ok(Response::default().cors(context.cors()));
-}
-
-struct RoundAuthority {
-  lobby_id: String,
-  game_id: String,
-  member_id: String,
-  user_id: String,
-  round_id: String,
 }
 
 async fn authority_for_round(
@@ -420,4 +456,105 @@ where
     })
     .and_then(|payload| Response::ok_json(payload))
     .map(|response| response.cors(context.cors()))
+}
+
+#[cfg(test)]
+mod test {
+  use super::authority_for_round;
+  use crate::{
+    bg,
+    context::{test_helpers as context_helpers, Context},
+    test_helpers::cleanup_lobby,
+  };
+  use async_std::task::block_on;
+  use sqlx::query;
+
+  struct GameContext {
+    lobby_id: String,
+    game_id: String,
+  }
+
+  async fn game_for_user(context: &Context, user_id: &String) -> GameContext {
+    let job_id = format!("job-for-user-{}", user_id);
+
+    let lobby_id = bg::handlers::lobbies::make_lobby(context.records(), &job_id, user_id)
+      .await
+      .expect("unable to create");
+
+    let game_id = bg::handlers::lobbies::make_game(context.records(), &job_id, user_id, &lobby_id)
+      .await
+      .expect("unable to crete");
+
+    GameContext { lobby_id, game_id }
+  }
+
+  async fn get_round_id(context: &Context, game_id: &String, position: i32) -> String {
+    let mut conn = context
+      .records_connection()
+      .await
+      .expect("unable to connect");
+
+    query!(
+      "select id from krumnet.game_rounds where game_id = $1 and position = $2",
+      game_id,
+      position
+    )
+    .fetch_all(&mut conn)
+    .await
+    .expect("unable to query")
+    .into_iter()
+    .nth(0)
+    .map(|row| row.id)
+    .expect("unable to get id")
+  }
+
+  #[test]
+  fn no_authority_for_fake_round() {
+    block_on(async {
+      let (ctx, user_id) =
+        context_helpers::with_user_by_name("routes.games.no_entry_for_same_user").await;
+      let authority = authority_for_round(&ctx, &String::from("bogus"), &user_id).await;
+      assert_eq!(authority.is_ok(), true);
+      assert_eq!(authority.unwrap().is_none(), true);
+      context_helpers::cleanup(&ctx).await;
+    });
+  }
+
+  #[test]
+  fn no_authority_for_non_member() {
+    block_on(async {
+      let (ctx, user_id) =
+        context_helpers::with_user_by_name("routes.games.no_authority_for_non_member").await;
+
+      let other =
+        context_helpers::make_user("routes.games.no_authority_for_non_member.other").await;
+
+      let game_context = game_for_user(&ctx, &other).await;
+      let round_id = get_round_id(&ctx, &game_context.game_id, 0).await;
+
+      let authority = authority_for_round(&ctx, &round_id, &user_id).await;
+
+      assert_eq!(authority.is_ok(), true);
+      assert_eq!(authority.unwrap().is_none(), true);
+
+      cleanup_lobby(&ctx, &game_context.lobby_id).await;
+      context_helpers::cleanup_user(&other).await;
+      context_helpers::cleanup(&ctx).await;
+    });
+  }
+
+  #[test]
+  fn authority_for_member() {
+    block_on(async {
+      let (ctx, user_id) =
+        context_helpers::with_user_by_name("routes.games.authority_for_member").await;
+      let game_context = game_for_user(&ctx, &user_id).await;
+      let round_id = get_round_id(&ctx, &game_context.game_id, 0).await;
+      let authority = authority_for_round(&ctx, &round_id, &user_id).await;
+      assert_eq!(authority.is_ok(), true);
+      assert_eq!(authority.unwrap().is_some(), true);
+      cleanup_lobby(&ctx, &game_context.lobby_id).await;
+      context_helpers::cleanup(&ctx).await;
+    });
+  }
 }
