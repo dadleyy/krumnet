@@ -186,3 +186,87 @@ pub async fn serve(configuration: Configuration) -> Result<()> {
 
   Ok(())
 }
+
+#[cfg(test)]
+mod test_helpers {
+  use crate::Context;
+  use sqlx::query;
+
+  pub async fn cleanup_lobby(context: &Context, id: &String) {
+    let mut conn = context
+      .records_connection()
+      .await
+      .expect("unable to connect");
+
+    query!(
+      "delete from krumnet.game_member_round_placement_results where lobby_id = $1",
+      id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete");
+
+    query!(
+      "delete from krumnet.game_round_entry_votes where lobby_id = $1",
+      id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete");
+
+    query!(
+      "delete from krumnet.game_member_placement_results where lobby_id = $1",
+      id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete");
+
+    query!(
+      "delete from krumnet.game_round_entry_votes where lobby_id = $1",
+      id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete");
+
+    query!(
+      "delete from krumnet.game_round_entries where lobby_id = $1",
+      id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete");
+
+    query!(
+      "delete from krumnet.game_memberships where lobby_id = $1",
+      id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete");
+
+    query!("delete from krumnet.game_rounds where lobby_id = $1", id)
+      .execute(&mut conn)
+      .await
+      .expect("unable to delete");
+
+    query!("delete from krumnet.games where lobby_id = $1", id)
+      .execute(&mut conn)
+      .await
+      .expect("unable to delete");
+
+    query!(
+      "delete from krumnet.lobby_memberships where lobby_id = $1",
+      id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete");
+
+    query!("delete from krumnet.lobbies where id = $1", id)
+      .execute(&mut conn)
+      .await
+      .expect("unable to delete");
+  }
+}
