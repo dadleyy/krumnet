@@ -99,27 +99,7 @@ pub async fn create_entry_vote<R: AsyncRead + Unpin>(
     }
   };
 
-  info!(
-    "user {} voting for '{}'",
-    authority.user_id, payload.entry_id
-  );
-
-  /*
-  let mut conn = context.records_connection().await?;
-
-  let attempt = query_file!(
-    "src/routes/games/data-store/create-round-entry-vote.sql",
-    payload.entry_id,
-    authority.member_id,
-    uid,
-  )
-  .fetch_all(&mut conn)
-  .await
-  .map_err(errors::humanize_error)?
-  .into_iter()
-  .nth(0)
-  .map(|row| row.id);
-  */
+  info!("user {:?} voting for '{}'", authority, payload.entry_id);
 
   let vote_id = match create_vote_for_entry(context, &authority, &entry_id).await? {
     Some(e) => e,
@@ -476,4 +456,182 @@ where
     })
     .and_then(|payload| Response::ok_json(payload))
     .map(|response| response.cors(context.cors()))
+}
+
+#[cfg(test)]
+mod test {
+  use super::authority_for_round;
+  use crate::{
+    bg,
+    context::{test_helpers as context_helpers, Context},
+  };
+  use async_std::task::block_on;
+  use sqlx::query;
+
+  async fn cleanup_lobby(context: &Context, id: &String) {
+    let mut conn = context
+      .records_connection()
+      .await
+      .expect("unable to connect");
+
+    query!(
+      "delete from krumnet.game_member_round_placement_results where lobby_id = $1",
+      id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete");
+
+    query!(
+      "delete from krumnet.game_round_entry_votes where lobby_id = $1",
+      id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete");
+
+    query!(
+      "delete from krumnet.game_member_placement_results where lobby_id = $1",
+      id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete");
+
+    query!(
+      "delete from krumnet.game_round_entry_votes where lobby_id = $1",
+      id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete");
+
+    query!(
+      "delete from krumnet.game_round_entries where lobby_id = $1",
+      id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete");
+
+    query!(
+      "delete from krumnet.game_memberships where lobby_id = $1",
+      id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete");
+
+    query!("delete from krumnet.game_rounds where lobby_id = $1", id)
+      .execute(&mut conn)
+      .await
+      .expect("unable to delete");
+
+    query!("delete from krumnet.games where lobby_id = $1", id)
+      .execute(&mut conn)
+      .await
+      .expect("unable to delete");
+
+    query!(
+      "delete from krumnet.lobby_memberships where lobby_id = $1",
+      id
+    )
+    .execute(&mut conn)
+    .await
+    .expect("unable to delete");
+
+    query!("delete from krumnet.lobbies where id = $1", id)
+      .execute(&mut conn)
+      .await
+      .expect("unable to delete");
+  }
+
+  struct GameContext {
+    lobby_id: String,
+    game_id: String,
+  }
+
+  async fn game_for_user(context: &Context, user_id: &String) -> GameContext {
+    let job_id = format!("job-for-user-{}", user_id);
+
+    let lobby_id = bg::handlers::lobbies::make_lobby(context.records(), &job_id, user_id)
+      .await
+      .expect("unable to create");
+
+    let game_id = bg::handlers::lobbies::make_game(context.records(), &job_id, user_id, &lobby_id)
+      .await
+      .expect("unable to crete");
+
+    GameContext { lobby_id, game_id }
+  }
+
+  async fn get_round_id(context: &Context, game_id: &String, position: i32) -> String {
+    let mut conn = context
+      .records_connection()
+      .await
+      .expect("unable to connect");
+
+    query!(
+      "select id from krumnet.game_rounds where game_id = $1 and position = $2",
+      game_id,
+      position
+    )
+    .fetch_all(&mut conn)
+    .await
+    .expect("unable to query")
+    .into_iter()
+    .nth(0)
+    .map(|row| row.id)
+    .expect("unable to get id")
+  }
+
+  #[test]
+  fn no_authority_for_fake_round() {
+    block_on(async {
+      let (ctx, user_id) =
+        context_helpers::with_user_by_name("routes.games.no_entry_for_same_user").await;
+      let authority = authority_for_round(&ctx, &String::from("bogus"), &user_id).await;
+      assert_eq!(authority.is_ok(), true);
+      assert_eq!(authority.unwrap().is_none(), true);
+      context_helpers::cleanup(&ctx).await;
+    });
+  }
+
+  #[test]
+  fn no_authority_for_non_member() {
+    block_on(async {
+      let (ctx, user_id) =
+        context_helpers::with_user_by_name("routes.games.no_authority_for_non_member").await;
+
+      let other =
+        context_helpers::make_user("routes.games.no_authority_for_non_member.other").await;
+
+      let game_context = game_for_user(&ctx, &other).await;
+      let round_id = get_round_id(&ctx, &game_context.game_id, 0).await;
+
+      let authority = authority_for_round(&ctx, &round_id, &user_id).await;
+
+      assert_eq!(authority.is_ok(), true);
+      assert_eq!(authority.unwrap().is_none(), true);
+
+      cleanup_lobby(&ctx, &game_context.lobby_id).await;
+      context_helpers::cleanup_user(&other).await;
+      context_helpers::cleanup(&ctx).await;
+    });
+  }
+
+  #[test]
+  fn authority_for_member() {
+    block_on(async {
+      let (ctx, user_id) =
+        context_helpers::with_user_by_name("routes.games.authority_for_member").await;
+      let game_context = game_for_user(&ctx, &user_id).await;
+      let round_id = get_round_id(&ctx, &game_context.game_id, 0).await;
+      let authority = authority_for_round(&ctx, &round_id, &user_id).await;
+      assert_eq!(authority.is_ok(), true);
+      assert_eq!(authority.unwrap().is_some(), true);
+      cleanup_lobby(&ctx, &game_context.lobby_id).await;
+      context_helpers::cleanup(&ctx).await;
+    });
+  }
 }

@@ -196,10 +196,68 @@ impl ContextBuilder {
 #[cfg(test)]
 pub mod test_helpers {
   use super::Context;
-  use crate::configuration::test_helpers::load_test_config as load_config;
+  pub use crate::configuration::test_helpers::load_test_config as load_config;
   use crate::{Authority, JobStore, RecordStore, SessionStore};
   use async_std::task::block_on;
+  use sqlx::query;
   use std::sync::Arc;
+
+  pub async fn cleanup_user(id: &String) {
+    let config = load_config().unwrap();
+    let records = RecordStore::open(&config).await.unwrap();
+    let mut conn = records.acquire().await.expect("unable to connect");
+    query!("delete from krumnet.users where id = $1", id)
+      .execute(&mut conn)
+      .await
+      .expect("unable to delete");
+  }
+
+  pub async fn cleanup(context: &Context) {
+    if let Authority::User { id: user_id, .. } = context.authority() {
+      cleanup_user(&user_id).await;
+    }
+  }
+
+  pub async fn make_user(name: &str) -> String {
+    let config = load_config().unwrap();
+    let records = RecordStore::open(&config).await.unwrap();
+    let mut conn = records.acquire().await.expect("unable to connect");
+
+    query!(
+      "insert into krumnet.users (default_email, name) values ($1, $1) returning id",
+      name,
+    )
+    .fetch_all(&mut conn)
+    .await
+    .expect("unable to insers")
+    .into_iter()
+    .nth(0)
+    .map(|row| row.id)
+    .expect("failed insert")
+  }
+
+  pub async fn with_user_by_name(name: &str) -> (Context, String) {
+    let config = load_config().unwrap();
+    let records = RecordStore::open(&config).await.unwrap();
+    let user_id = make_user(name).await;
+    let session = Arc::new(SessionStore::open(&config).await.unwrap());
+    let records = Arc::new(records);
+    let jobs = Arc::new(JobStore::open(&config).await.unwrap());
+    let auth = Authority::User {
+      id: user_id.clone(),
+      token: String::from(""),
+    };
+
+    let ctx = Context::builder()
+      .configuration(&config)
+      .records(records)
+      .session(session)
+      .jobs(jobs)
+      .with_authority(auth)
+      .unwrap();
+
+    (ctx, user_id)
+  }
 
   pub fn with_auth(auth: Authority) -> Context {
     block_on(async {
