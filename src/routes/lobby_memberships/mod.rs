@@ -52,15 +52,19 @@ async fn count_members(context: &Context, lobby_id: &String) -> Result<Option<i6
 }
 
 async fn replace_short_id(context: &Context, lobby_id: &String) -> Result<String> {
-  if lobby_id.len() != 5 {
+  if lobby_id.len() > 8 {
     return Ok(lobby_id.clone());
+  }
+
+  if lobby_id.len() < 5 {
+    return Err(errors::e(format!("lobby id too short - '{}'", lobby_id)));
   }
 
   info!("attempting to resolve short id '{}'", lobby_id);
   let mut conn = context.records_connection().await?;
   query_file!(
     "src/routes/lobby_memberships/data-store/resolve-lobby-id.sql",
-    format!("{}%", lobby_id)
+    format!("{}%", lobby_id.to_lowercase())
   )
   .fetch_all(&mut conn)
   .await
