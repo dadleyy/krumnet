@@ -31,5 +31,6 @@ pub fn get() -> String {
     .as_bytes()
     .into_iter()
     .map(|byte| format!("{:X}", byte))
-    .collect()
+    .collect::<String>()
+    .to_lowercase()
 }
