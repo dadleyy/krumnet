@@ -256,8 +256,8 @@ mod test {
       let job_id = "routes.lobby_memberships.resolve_lobby_id_garbage";
       let (ctx, _) = context_helpers::with_user_by_name(job_id).await;
       assert_eq!(
-        replace_short_id(&ctx, &String::from("whoa")).await.unwrap(),
-        String::from("whoa")
+        replace_short_id(&ctx, &String::from("whoa")).await.is_err(),
+        true
       );
       context_helpers::cleanup(&ctx).await;
     });
