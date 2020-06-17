@@ -1,4 +1,4 @@
-use super::utils::count_members;
+use super::utils::{count_entries, count_members};
 use crate::{bg::context::Context, interchange};
 use log::{debug, info, warn};
 use sqlx::query_file;
@@ -136,12 +136,11 @@ async fn round_completion_result(
   info!("checking round completion for round '{}'", details.round_id);
   let member_count = count_members(&context, &details.round_id).await?;
   let vote_count = count_votes(&details.round_id, context).await?;
+  let entry_count = count_entries(&context, &details.round_id).await?;
 
-  if vote_count != member_count {
-    info!(
-      "round {} not complete ({}/{} votes)",
-      details.round_id, vote_count, member_count
-    );
+  if vote_count != member_count || member_count != entry_count {
+    let rid = &details.round_id;
+    info!("round {} incomplete ({}/{})", rid, vote_count, member_count);
     return Ok(interchange::jobs::CheckRoundCompletionResult::Incomplete);
   }
 
@@ -382,6 +381,7 @@ mod test {
       let placements = get_round_placements(&context, &round_id).await;
       assert_eq!(placements.len(), 0);
       let entry_id = create_round_entry(&context, &test_context, &round_id).await;
+      fulfill(&context, &round_id).await;
       create_round_vote(&context, &test_context, &round_id, &entry_id).await;
       let job = job_from_test_context(&test_context, &round_id);
       let result = round_completion_result(&context, &job).await;

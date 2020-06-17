@@ -7,6 +7,27 @@ fn warn_and_stringify<E: std::error::Error>(e: E) -> String {
   format!("{}", e)
 }
 
+pub async fn count_entries(context: &Context, round_id: &String) -> Result<i64, String> {
+  let mut conn = context
+    .records
+    .acquire()
+    .await
+    .map_err(warn_and_stringify)?;
+
+  let result = query_file!(
+    "src/bg/handlers/rounds/data-store/count-entries-for-round.sql",
+    round_id
+  )
+  .fetch_all(&mut conn)
+  .await
+  .map_err(warn_and_stringify)?;
+
+  result
+    .into_iter()
+    .nth(0)
+    .and_then(|row| row.entry_count)
+    .ok_or(format!("Unable to count entries for round '{}'", round_id))
+}
 pub async fn count_members(context: &Context, round_id: &String) -> Result<i64, String> {
   let mut conn = context
     .records
