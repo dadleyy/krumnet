@@ -644,7 +644,7 @@ dependencies = [
 
 [[package]]
 name = "jsonwebtoken"
-version = "7.1.2"
+version = "7.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "base64 0.12.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -685,7 +685,7 @@ dependencies = [
  "gumdrop 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "http 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "isahc 0.9.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "jsonwebtoken 7.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "jsonwebtoken 7.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "kramer 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "mockito 0.26.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1818,7 +1818,7 @@ dependencies = [
 "checksum isahc 0.9.5 (registry+https://github.com/rust-lang/crates.io-index)" = "f54e7cf252df9a36605ccfabea2a754ad30c24b51b77f830486e555ac8e76bce"
 "checksum itoa 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)" = "dc6f3ad7b9d11a0c00842ff8de1b60ee58661048eb8049ed33c73594f359d7e6"
 "checksum js-sys 0.3.41 (registry+https://github.com/rust-lang/crates.io-index)" = "c4b9172132a62451e56142bff9afc91c8e4a4500aa5b847da36815b63bfda916"
-"checksum jsonwebtoken 7.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "b1f325ae57ddcf609f02d891486ce740f5bbd0cc3e93f9bffaacdf6594b21404"
+"checksum jsonwebtoken 7.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "afabcc15e437a6484fc4f12d0fd63068fe457bf93f1c148d3d9649c60b103f32"
 "checksum kernel32-sys 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7507624b29483431c0ba2d82aece8ca6cdba9382bff4ddd0f7490560c056098d"
 "checksum kramer 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "b35a7990a37a9b5fff24edcb58e47b9bb5f706ccb5f3c9e669bf002ecceaa73d"
 "checksum kv-log-macro 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)" = "4ff57d6d215f7ca7eb35a9a64d656ba4d9d2bef114d741dc08048e75e2f5d418"
