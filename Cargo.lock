@@ -30,22 +30,23 @@ dependencies = [
 
 [[package]]
 name = "async-executor"
-version = "1.1.1"
+version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "async-task 3.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-task 4.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "concurrent-queue 1.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "fastrand 1.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-lite 1.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "once_cell 1.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "vec-arena 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "async-global-executor"
-version = "1.0.2"
+version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "async-executor 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-executor 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "async-io 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-lite 1.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "num_cpus 1.13.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -86,7 +87,7 @@ name = "async-native-tls"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "async-std 1.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-std 1.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "native-tls 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror 1.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
  "url 2.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -94,13 +95,12 @@ dependencies = [
 
 [[package]]
 name = "async-std"
-version = "1.6.4"
+version = "1.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "async-global-executor 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-global-executor 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "async-io 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "async-mutex 1.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "async-task 3.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "blocking 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "crossbeam-utils 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-channel 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -140,7 +140,7 @@ dependencies = [
 
 [[package]]
 name = "async-task"
-version = "3.0.0"
+version = "4.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -392,7 +392,7 @@ name = "elaine"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "async-std 1.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-std 1.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -754,14 +754,14 @@ name = "kramer"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "async-std 1.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-std 1.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "krumnet"
 version = "1.3.2"
 dependencies = [
- "async-std 1.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-std 1.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono-tz 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "dotenv 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1429,7 +1429,7 @@ version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "async-native-tls 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "async-std 1.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-std 1.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "async-stream 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "base64 0.12.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "bitflags 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1460,7 +1460,7 @@ name = "sqlx-macros"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "async-std 1.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-std 1.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "dotenv 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "heck 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1818,15 +1818,15 @@ dependencies = [
 "checksum aho-corasick 0.7.13 (registry+https://github.com/rust-lang/crates.io-index)" = "043164d8ba5c4c3035fec9bbee8647c0261d788f3474306f93bb65901cae0e86"
 "checksum assert-json-diff 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)" = "9c356497fd3417158bcb318266ac83c391219ca3a5fa659049f42e0041ab57d6"
 "checksum async-channel 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "43de69555a39d52918e2bc33a408d3c0a86c829b212d898f4ca25d21a6387478"
-"checksum async-executor 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "a831e74aa1937d3bbd3a356f34c23dbc6b6f0abc5160bd5484a9f75d5e76aea8"
-"checksum async-global-executor 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "c07d34f7bea9658346df5745d5c7b121c475aab7f7ec7c3dc5905d33ddefc899"
+"checksum async-executor 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d373d78ded7d0b3fa8039375718cde0aace493f2e34fb60f51cbf567562ca801"
+"checksum async-global-executor 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "fefeb39da249f4c33af940b779a56723ce45809ef5c54dad84bb538d4ffb6d9e"
 "checksum async-io 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "38628c78a34f111c5a6b98fc87dfc056cd1590b61afe748b145be4623c56d194"
 "checksum async-mutex 1.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "20e85981fc34e84cdff3fc2c9219189752633fdc538a06df8b5ac45b68a4f3a9"
 "checksum async-native-tls 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "9e9e7a929bd34c68a82d58a4de7f86fffdaf97fb2af850162a7bb19dd7269b33"
-"checksum async-std 1.6.4 (registry+https://github.com/rust-lang/crates.io-index)" = "3c92085acfce8b32e5b261d0b59b8f3309aee69fea421ea3f271f8b93225754f"
+"checksum async-std 1.6.5 (registry+https://github.com/rust-lang/crates.io-index)" = "a9fa76751505e8df1c7a77762f60486f60c71bbd9b8557f4da6ad47d083732ed"
 "checksum async-stream 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "22068c0c19514942eefcfd4daf8976ef1aad84e61539f95cd200c35202f80af5"
 "checksum async-stream-impl 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "25f9db3b38af870bf7e5cc649167533b493928e50744e2c30ae350230b414670"
-"checksum async-task 3.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "c17772156ef2829aadc587461c7753af20b7e8db1529bc66855add962a3b35d3"
+"checksum async-task 4.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "8ab27c1aa62945039e44edaeee1dc23c74cc0c303dd5fe0fb462a184f1c3a518"
 "checksum atomic-waker 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "065374052e7df7ee4047b1160cca5e1467a12351a40b3da123c870ba0b8eda2a"
 "checksum atty 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)" = "d9b39be18770d11421cdb1b9947a45dd3f37e93092cbf377614828a319d5fee8"
 "checksum autocfg 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "f8aac770f1885fd7e387acedd76065302551364496e46b3dd00860b2f8359b9d"
