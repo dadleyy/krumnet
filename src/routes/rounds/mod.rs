@@ -19,7 +19,7 @@ struct RoundDetailRow {
   round_id: String,
   prompt: Option<String>,
   pos: i32,
-  created_at: DateTime<Utc>,
+  created_at: Option<DateTime<Utc>>,
   completed_at: Option<DateTime<Utc>>,
   started_at: Option<DateTime<Utc>>,
   fulfilled_at: Option<DateTime<Utc>>,

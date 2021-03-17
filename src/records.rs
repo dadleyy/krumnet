@@ -1,8 +1,10 @@
 use std::io::{Error, Result};
 
 use log::{info, warn};
+
 use sqlx::pool::PoolConnection;
-use sqlx::postgres::{PgConnection, PgPool};
+use sqlx::postgres::PgPool;
+use sqlx::Postgres;
 
 use crate::{errors, Configuration};
 
@@ -15,17 +17,13 @@ pub struct RecordStore {
   _pg: PgPool,
 }
 
-pub type Connection = PoolConnection<PgConnection>;
+pub type Connection = PoolConnection<Postgres>;
 
 impl RecordStore {
   pub async fn open(configuration: &Configuration) -> Result<Self> {
     let uri = &configuration.record_store.postgres_uri;
 
-    let pg = PgPool::builder()
-      .max_size(5)
-      .build(uri)
-      .await
-      .map_err(errors::humanize_error)?;
+    let pg = PgPool::connect(uri).await.map_err(errors::humanize_error)?;
 
     info!("successfully connected to '{}'", uri);
 
