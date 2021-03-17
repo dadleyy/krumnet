@@ -32,8 +32,8 @@ pub struct GameRoundVote {
   pub member_id: String,
   pub user_id: String,
   pub entry_id: String,
-  #[serde(with = "chrono::serde::ts_milliseconds")]
-  pub created: DateTime<Utc>,
+  #[serde(with = "chrono::serde::ts_milliseconds_option")]
+  pub created: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -47,8 +47,8 @@ pub struct GameRoundDetails {
   pub position: i32,
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
   pub started: Option<DateTime<Utc>>,
-  #[serde(with = "chrono::serde::ts_milliseconds")]
-  pub created: DateTime<Utc>,
+  #[serde(with = "chrono::serde::ts_milliseconds_option")]
+  pub created: Option<DateTime<Utc>>,
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
   pub completed: Option<DateTime<Utc>>,
   #[serde(with = "chrono::serde::ts_milliseconds_option")]

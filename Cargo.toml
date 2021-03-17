@@ -37,8 +37,8 @@ jsonwebtoken = "^7.2.0"
 dotenv = "^0.15"
 
 [dependencies.sqlx]
-version = "^0.4"
-features = ["postgres", "chrono", "macros"]
+version = "0.4.1"
+features = ["postgres", "chrono", "macros", "runtime-async-std-rustls"]
 
 [dependencies.kramer]
 version = "^1.0.1"
