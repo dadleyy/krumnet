@@ -826,9 +826,9 @@ dependencies = [
 
 [[package]]
 name = "isahc"
-version = "1.1.0"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af3d0a62435883f745c825ec06a03a38d24bf5fa65c43e2c083b6a60ce0058ae"
+checksum = "33b24d2aed6bbe6faeab0e164ec2e9e6193fcfcfe489b6eb59fb0d0d34947d73"
 dependencies = [
  "crossbeam-utils",
  "curl",
@@ -840,6 +840,7 @@ dependencies = [
  "log",
  "mime",
  "once_cell",
+ "polling",
  "slab",
  "sluice",
  "tracing",
