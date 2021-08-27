@@ -19,7 +19,7 @@ name = "kruwk"
 path = "src/bin/kruwk/main.rs"
 
 [dependencies]
-async-std = "^1.9"
+async-std = "^1.10"
 rand = "^0.8"
 
 # url has better ergonomics for serializing + deserializing urls
