@@ -57,7 +57,7 @@ version = "^0.4"
 features = ["serde"]
 
 [dev-dependencies]
-mockito = "^0.30"
+mockito = "^0.31"
 
 [profile.release]
 codegen-units = 1
