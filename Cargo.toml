@@ -45,7 +45,7 @@ version = "^1.1.0"
 features = ["kramer-async"]
 
 [dependencies.uuid]
-version = "^1.0"
+version = "^1.2"
 features = ["v4", "v5"]
 
 [dependencies.serde]
