@@ -41,7 +41,7 @@ version = "0.5.9"
 features = ["postgres", "chrono", "macros", "runtime-async-std-rustls"]
 
 [dependencies.kramer]
-version = "^1.1.0"
+version = "^1.3.2"
 features = ["kramer-async"]
 
 [dependencies.uuid]
