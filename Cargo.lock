@@ -891,9 +891,9 @@ dependencies = [
 
 [[package]]
 name = "kramer"
-version = "1.1.0"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a868b230de482673303a4dd1a35fc58eebd3d1e70369d1c0f08aa77af5417914"
+checksum = "dba0ab7a067b367ee2d23e86f3ca05d105eda46de218876463dca8ced13989a0"
 dependencies = [
  "async-std",
 ]
